@@ -203,7 +203,7 @@ if not df_laporan.empty:
     df_tampil = df_laporan.drop(columns=['Path Foto']).copy()
     df_tampil['Google Maps'] = df_tampil.apply(lambda row: f"https://www.google.com/maps?q={row['Latitude']},{row['Longitude']}", axis=1)
     
-    st.dataframe(df_tampil, use_column_width=True)
+    st.dataframe(df_tampil, use_container_width=True)
     
     # --- GALERI FOTO LOKASI LAPANGAN ---
     st.markdown("---")
@@ -278,4 +278,50 @@ if not df_laporan.empty:
         st.write("")
         st.warning(f"⚠️ **PERINGATAN:** Tindakan ini akan menghapus log data & foto untuk **{st.session_state['target_hapus']}** secara permanen.")
         
-        input_pass = st.text_input
+        input_pass = st.text_input("Masukkan Password Admin:", type="password", key="pass_admin_hapus")
+        
+        c_batal, c_eksekusi = st.columns(2)
+        with c_batal:
+            if st.button("❌ Batalkan", use_container_width=True):
+                st.session_state['konfirmasi_hapus'] = False
+                st.rerun()
+                
+        with c_eksekusi:
+            if st.button("🔥 Konfirmasi Hapus", type="primary", use_container_width=True):
+                if input_pass == "admin123":
+                    conn = sqlite3.connect(DB_NAME)
+                    cursor = conn.cursor()
+                    target = st.session_state['target_hapus']
+                    
+                    if target == "Hari Ini":
+                        cursor.execute("SELECT path_foto FROM laporan WHERE tanggal = ?", (hari_ini,))
+                        fotos = cursor.fetchall()
+                        cursor.execute("DELETE FROM laporan WHERE tanggal = ?", (hari_ini,))
+                    elif target == "7 Hari Terakhir (Mingguan)":
+                        tgl_7_hari = (waktu_sekarang - timedelta(days=7)).strftime("%Y-%m-%d")
+                        cursor.execute("SELECT path_foto FROM laporan WHERE tanggal >= ?", (tgl_7_hari,))
+                        fotos = cursor.fetchall()
+                        cursor.execute("DELETE FROM laporan WHERE tanggal >= ?", (tgl_7_hari,))
+                    else:
+                        cursor.execute("SELECT path_foto FROM laporan")
+                        fotos = cursor.fetchall()
+                        cursor.execute("DELETE FROM laporan")
+                    
+                    conn.commit()
+                    conn.close()
+                    
+                    for f in fotos:
+                        path = f[0]
+                        if path and os.path.exists(path):
+                            try:
+                                os.remove(path)
+                            except Exception:
+                                pass
+                                
+                    st.session_state.pop('konfirmasi_hapus', None)
+                    st.session_state['notifikasi_sukses'] = f"🗑️ Data log & foto ({target}) berhasil dibersihkan!"
+                    st.rerun()
+                else:
+                    st.error("❌ Password Admin salah!")
+else:
+    st.info("📭 Belum ada riwayat laporan penjualan SPG yang tercatat.")
