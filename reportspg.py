@@ -7,6 +7,7 @@ import pandas as pd
 from shapely.geometry import Point
 import streamlit as st
 from streamlit_js_eval import get_geolocation
+import pydeck as pdk
 
 # ====================================================
 # KONFIGURASI HALAMAN STREAMLIT
@@ -396,6 +397,79 @@ if not df_user_rekap.empty:
       use_container_width=True,
   )
 
+# ----------------------------------------------------
+  # Visualisasi Rute Perjalanan SPG
+  # ----------------------------------------------------
+
+st.markdown("---")
+st.markdown(
+    f"### 🗺️ Visualisasi Rute Perjalanan Lapangan - {st.session_state['user_spg']}"
+)
+
+if not df_user_rekap.empty:
+  # Filter berdasarkan tanggal tertentu untuk melihat rute harian
+  daftar_tanggal = sorted(df_user_rekap["Tanggal"].dropna().unique(), reverse=True)
+  pilihan_tgl_rute = st.selectbox(
+      "Pilih Tanggal Rute Perjalanan", options=daftar_tanggal
+  )
+
+  df_rute_harian = df_user_rekap[
+      df_user_rekap["Tanggal"] == pilihan_tgl_rute
+  ].sort_values("Waktu")
+
+  if not df_rute_harian.empty and "Latitude" in df_rute_harian.columns:
+    # Siapkan data koordinat untuk jalur (Path) dan titik (Scatter)
+    koordinat_list = df_rute_harian[["Longitude", "Latitude"]].values.tolist()
+
+    # Titik tengah peta (Center) berdasarkan rata-rata koordinat hari itu
+    center_lat = df_rute_harian["Latitude"].mean()
+    center_lon = df_rute_harian["Longitude"].mean()
+
+    # Konfigurasi Layer Mapbox / Pydeck
+    # 1. Layer Garis Rute (PathLayer)
+    path_layer = pdk.Layer(
+        "PathLayer",
+        data=[{"path": koordinat_list, "name": "Rute SPG"}],
+        get_path="path",
+        get_color=[255, 0, 0, 200],  # Warna Garis Merah
+        get_width=5,
+        pickable=True,
+    )
+
+    # 2. Layer Titik Pemberhentian Warkop (ScatterplotLayer)
+    scatter_layer = pdk.Layer(
+        "ScatterplotLayer",
+        data=df_rute_harian,
+        get_position=["Longitude", "Latitude"],
+        get_color=[0, 128, 255, 200],  # Warna Titik Biru
+        get_radius=50,  # Radius titik dalam meter
+        pickable=True,
+    )
+
+    # Tampilan Peta View
+    view_state = pdk.ViewState(
+        latitude=center_lat, longitude=center_lon, zoom=13, pitch=40
+    )
+
+    # Render Peta di Streamlit (Bisa menggunakan style Mapbox default gratis dari Pydeck)
+    r = pdk.Deck(
+        layers=[path_layer, scatter_layer],
+        initial_view_state=view_state,
+        tooltip={
+            "html": "<b>Warkop/LKK:</b> {Warkop_LKK}<br/><b>Waktu:</b>"
+            " {Waktu}<br/><b>Brand:</b> {Brand_Rokok} ({Jumlah_Bungkus} bks)",
+            "style": {"backgroundColor": "steelblue", "color": "white"},
+        },
+    )
+
+    st.pydeck_chart(r)
+    st.info(
+        "💡 *Arahkan kursor ke titik biru pada peta untuk melihat detail"
+        " kunjungan warkop dan waktu pelaporan.*"
+    )
+  else:
+    st.warning("Belum ada data koordinat GPS yang terekam pada tanggal ini.")
+      
   # ==========================================
   # MENU PENGATURAN / HAPUS LOG
   # ==========================================
