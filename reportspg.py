@@ -8,7 +8,9 @@ from shapely.geometry import Point
 import streamlit as st
 from streamlit_js_eval import get_geolocation
 
-# Konfigurasi Halaman Streamlit
+# ====================================================
+# KONFIGURASI HALAMAN STREAMLIT
+# ====================================================
 st.set_page_config(
     page_title="Laporan SPG Mobile", page_icon="📍", layout="centered"
 )
@@ -514,4 +516,3 @@ else:
   st.info(
       f"Belum ada data laporan tersimpan untuk {st.session_state['user_spg']}."
   )
-```[cite: 5]
