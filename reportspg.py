@@ -41,22 +41,28 @@ if gdf_wilayah is not None and "nm_kecamatan" in gdf_wilayah.columns:
   daftar_kecamatan = sorted(gdf_wilayah["nm_kecamatan"].dropna().unique().tolist())
 
 # ====================================================
-# 2. GPS OTOMATIS SENYAP (TANPA TOMBOL / TANPA MENU)
+# 2. GPS AKURASI TINGGI (ALLOW CURRENT LOCATION)
 # ====================================================
+# Jika belum ada parameter GPS, set ke None agar tidak pakai default keliru
 if "user_lat" not in st.session_state:
-  st.session_state["user_lat"] = -7.2575  # Default awal
+  st.session_state["user_lat"] = None
 if "user_lon" not in st.session_state:
-  st.session_state["user_lon"] = 112.7521
+  st.session_state["user_lon"] = None
 
+# Komponen JS untuk memaksa izin lokasi dan akurasi tinggi
 gps_component = """
 <script>
-const getLocation = () => {
+const getAccurateLocation = () => {
     if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(
             (position) => {
                 const lat = position.coords.latitude;
                 const lon = position.coords.longitude;
+                const accuracy = position.coords.accuracy;
+                console.log("GPS Akurat OK. Akurasi: " + accuracy + " meter");
+
                 const url = new URL(window.parent.location.href);
+                // Hanya refresh jika koordinat berbeda
                 if (url.searchParams.get("lat") != lat || url.searchParams.get("lon") != lon) {
                     url.searchParams.set("lat", lat);
                     url.searchParams.set("lon", lon);
@@ -64,27 +70,49 @@ const getLocation = () => {
                 }
             },
             (error) => {
-                console.log("GPS Error: " + error.message);
+                console.warn("GPS Error (" + error.code + "): " + error.message);
             },
-            { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+            { 
+                enableHighAccuracy: true,  // Memaksa modul GPS perangkat menyala
+                timeout: 15000,            // Waktu tunggu hingga 15 detik
+                maximumAge: 0              // Tidak pakai cache lokasi lama
+            }
         );
     }
 };
-getLocation();
+getAccurateLocation();
 </script>
 """
 components.html(gps_component, height=0, width=0)
 
+# Ambil koordinat dari parameter URL hasil deteksi GPS browser
 params = st.query_params
 if "lat" in params and "lon" in params:
   try:
     st.session_state["user_lat"] = float(params["lat"])
     st.session_state["user_lon"] = float(params["lon"])
-  except:
+  except (ValueError, TypeError):
     pass
 
-user_lat = st.session_state["user_lat"]
-user_lon = st.session_state["user_lon"]
+# Tombol manual untuk memaksa refresh lokasi GPS jika meleset
+col_info, col_btn = st.columns([2, 1])
+with col_btn:
+  if st.button("🔄 Ambil Ulang GPS"):
+    st.query_params.clear()
+    st.rerun()
+
+# Jika GPS belum terkunci / izin belum diberikan
+if st.session_state["user_lat"] is None or st.session_state["user_lon"] is None:
+  st.warning(
+      "⏳ **Meminta akses GPS akurasi tinggi...**\n\nPastikan Anda telah menekan"
+      " tombol **'Allow' / 'Izinkan'** pada pop-up izin lokasi di browser HP"
+      " Anda. Jika belum muncul atau meleset, klik tombol **Ambil Ulang"
+      " GPS** di atas."
+  )
+  st.stop()
+
+user_lat = float(st.session_state["user_lat"])
+user_lon = float(st.session_state["user_lon"])
 
 # ====================================================
 # 3. DETEKSI POSISI SPG SAAT INI (KECAMATAN & KOORDINAT)
@@ -101,7 +129,7 @@ if gdf_wilayah is not None:
 
 # Tampilkan informasi live koordinat & posisi SPG di antarmuka
 st.info(
-    f"📍 **Status GPS Anda:**\n\n"
+    f"📍 **Status GPS Anda (Terkunci):**\n\n"
     f"- **Koordinat:** Lat: `{user_lat:.6f}`, Lon: `{user_lon:.6f}`\n"
     f"- **Posisi Kecamatan Saat Ini:** **{kecamatan_saat_ini}**"
 )
