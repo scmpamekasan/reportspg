@@ -3,3 +3,4 @@ pandas
 geopandas
 shapely
 streamlit-js-eval
+openpyxl
