@@ -3,7 +3,7 @@ from io import BytesIO
 import math
 import pandas as pd
 import streamlit as st
-from streamlit_geolocation import streamlit_geolocation
+import streamlit.components.v1 as components
 
 # Konfigurasi Halaman Streamlit
 st.set_page_config(
@@ -33,7 +33,7 @@ def load_master_lokasi():
         "Zona": ["Surabaya Barat", "Surabaya Barat", "Surabaya Barat"],
         "Latitude": [-7.2575, -7.2600, -7.2500],
         "Longitude": [112.7521, 112.7550, 112.7400],
-        "Radius_Meter": [150, 150, 150],  # Toleransi radius dalam meter
+        "Radius_Meter": [150, 150, 150],
     }
     return pd.DataFrame(data_dummy)
 
@@ -57,20 +57,54 @@ def hitung_jarak_meter(lat1, lon1, lat2, lon2):
 df_master = load_master_lokasi()
 
 # ====================================================
-# 2. DETEKSI GPS OTOMATIS (SENYAP DI BACKGROUND)
+# 2. GPS OTOMATIS SENYAP (TANPA TOMBOL / TANPA MENU)
 # ====================================================
-loc = streamlit_geolocation()
+# Menyimpan koordinat di st.session_state agar terekam
+if "user_lat" not in st.session_state:
+  st.session_state["user_lat"] = -7.2575  # Default awal
+if "user_lon" not in st.session_state:
+  st.session_state["user_lon"] = 112.7521
 
-user_lat = None
-user_lon = None
+# Komponen HTML tersembunyi yang langsung meminta lokasi begitu halaman terbuka
+gps_component = """
+<script>
+const getLocation = () => {
+    if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+            (position) => {
+                const lat = position.coords.latitude;
+                const lon = position.coords.longitude;
+                // Kirim koordinat kembali ke Streamlit melalui URL parameters atau komunikasi stream
+                const url = new URL(window.parent.location.href);
+                if (url.searchParams.get("lat") != lat || url.searchParams.get("lon") != lon) {
+                    url.searchParams.set("lat", lat);
+                    url.searchParams.set("lon", lon);
+                    window.parent.location.href = url.toString();
+                }
+            },
+            (error) => {
+                console.log("GPS Error: " + error.message);
+            },
+            { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+        );
+    }
+};
+getLocation();
+</script>
+"""
+components.html(gps_component, height=0, width=0)
 
-if loc and loc.get("latitude") and loc.get("longitude"):
-  user_lat = float(loc["latitude"])
-  user_lon = float(loc["longitude"])
-else:
-  # Fallback nilai default jika GPS belum merespons/diizinkan
-  user_lat = -7.2575
-  user_lon = 112.7521
+# Ambil koordinat dari parameter URL jika berhasil dikirim oleh skrip di atas
+params = st.query_params
+if "lat" in params and "lon" in params:
+  try:
+    st.session_state["user_lat"] = float(params["lat"])
+    st.session_state["user_lon"] = float(params["lon"])
+  except:
+    pass
+
+user_lat = st.session_state["user_lat"]
+user_lon = st.session_state["user_lon"]
 
 # ====================================================
 # 3. PILIH PROMOTOR & LOKASI WARKOP/LKK
@@ -84,7 +118,7 @@ pilihan_warkop = st.selectbox(
     "Pilih Lokasi Warkop / LKK Tujuan", df_master["Nama_Warkop"].tolist()
 )
 
-# Ambil data koordinat target warkop yang dipilih dari file GitHub
+# Ambil data koordinat target warkop dari file GitHub
 data_terpilih = df_master[df_master["Nama_Warkop"] == pilihan_warkop].iloc[0]
 target_lat = float(data_terpilih["Latitude"])
 target_lon = float(data_terpilih["Longitude"])
@@ -100,9 +134,9 @@ if jarak_saat_ini <= max_radius:
   sistem_terbuka = True
 else:
   st.error(
-      f"❌ Anda berada di luar area **{pilihan_warkop}**! Silakan mendekat ke"
-      f" lokasi (Maksimal radius: {max_radius} meter) untuk membuka form"
-      " laporan."
+      f"❌ Anda berada di luar area **{pilihan_warkop}**! Jarak Anda saat ini"
+      f" ±{round(jarak_saat_ini, 1)} meter dari titik lokasi. Mendekatlah ke"
+      " lokasi untuk membuka form laporan."
   )
   sistem_terbuka = False
 
