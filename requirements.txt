@@ -1,6 +1,7 @@
 streamlit
 pandas
 geopandas
-shapely
-streamlit-js-eval
 openpyxl
+streamlit-js-eval
+shapely
+pydeck
