@@ -339,7 +339,7 @@ if not df_user_rekap.empty:
   st.markdown("#### 📋 Tabel Evaluasi Harian")
 
   df_eval = (
-      df_user_rekap.groupby(["Tanggal", "Promotor", "Brand_Rokok"])
+      df_user_rekap.groupby(["Tanggal", "Promotor","Nama_SPG", "Brand_Rokok"])
       .agg(
           Jumlah_Titik_Warkop=(
               "Warkop_LKK",
