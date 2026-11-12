@@ -57,7 +57,7 @@ def hitung_jarak_meter(lat1, lon1, lat2, lon2):
 df_master = load_master_lokasi()
 
 # ====================================================
-# 2. DETEKSI GPS OTOMATIS (DI BACKGROUND)
+# 2. DETEKSI GPS OTOMATIS (SENYAP DI BACKGROUND)
 # ====================================================
 loc = streamlit_geolocation()
 
@@ -68,7 +68,7 @@ if loc and loc.get("latitude") and loc.get("longitude"):
   user_lat = float(loc["latitude"])
   user_lon = float(loc["longitude"])
 else:
-  # Fallback nilai default sementara agar tidak error saat pertama kali render
+  # Fallback nilai default jika GPS belum merespons/diizinkan
   user_lat = -7.2575
   user_lon = 112.7521
 
@@ -84,7 +84,7 @@ pilihan_warkop = st.selectbox(
     "Pilih Lokasi Warkop / LKK Tujuan", df_master["Nama_Warkop"].tolist()
 )
 
-# Ambil data koordinat target warkop yang dipilih dari file GitHub (Penulisan bersih)
+# Ambil data koordinat target warkop yang dipilih dari file GitHub
 data_terpilih = df_master[df_master["Nama_Warkop"] == pilihan_warkop].iloc[0]
 target_lat = float(data_terpilih["Latitude"])
 target_lon = float(data_terpilih["Longitude"])
@@ -96,16 +96,13 @@ max_radius = float(data_terpilih.get("Radius_Meter", 150))
 jarak_saat_ini = hitung_jarak_meter(user_lat, user_lon, target_lat, target_lon)
 
 if jarak_saat_ini <= max_radius:
-  st.success(
-      f"✅ Terdeteksi di area **{pilihan_warkop}** (Jarak:"
-      f" {round(jarak_saat_ini, 1)} m). Silakan isi laporan."
-  )
+  st.success(f"✅ Berada di area **{pilihan_warkop}**. Silakan isi laporan.")
   sistem_terbuka = True
 else:
   st.error(
-      f"❌ Anda berada di luar area **{pilihan_warkop}**! Jarak Anda saat ini"
-      f" {round(jarak_saat_ini, 1)} meter dari lokasi (Maksimal radius:"
-      f" {max_radius} m). Mendekatlah ke lokasi untuk membuka form laporan."
+      f"❌ Anda berada di luar area **{pilihan_warkop}**! Silakan mendekat ke"
+      f" lokasi (Maksimal radius: {max_radius} meter) untuk membuka form"
+      " laporan."
   )
   sistem_terbuka = False
 
