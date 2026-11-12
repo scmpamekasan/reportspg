@@ -139,7 +139,7 @@ st.markdown("---")
 
 
 # ====================================================
-# 1. AMBIL DATA MASTER WILAYAH DINAMIS (SURABAYA / GRESIK)
+# 1. AMBIL DATA MASTER WILAYAH DINAMIS & GEOFENCING
 # ====================================================
 @st.cache_data
 def load_master_wilayah(kota):
@@ -154,6 +154,9 @@ def load_master_wilayah(kota):
     with open(filename, "r", encoding="utf-8") as f:
       data = json.load(f)
     gdf_master = gpd.GeoDataFrame.from_features(data)
+    # Pastikan sistem koordinat standar WGS84 (EPSG:4326)
+    if gdf_master.crs is None:
+      gdf_master.set_crs("EPSG:4326", inplace=True)
     return gdf_master
   except Exception as e:
     st.error(f"Gagal memuat file master wilayah '{filename}': {e}")
@@ -177,7 +180,7 @@ if gdf_wilayah is not None:
     daftar_kecamatan = ["Kecamatan Default"]
 
 # ====================================================
-# 2. AMBIL KOORDINAT GPS OTOMATIS SAAT WEB DIBUKA
+# 2. AMBIL KOORDINAT GPS OTOMATIS & VALIDASI GEOFENCE
 # ====================================================
 loc = get_geolocation()
 
@@ -189,17 +192,44 @@ if loc is None:
   user_lat = -7.2575
   user_lon = 112.7521
   akurasi_meter = 0.0
+  is_inside_geofence = False
 else:
   user_lat = float(loc["coords"]["latitude"])
   user_lon = float(loc["coords"]["longitude"])
   akurasi_meter = round(float(loc["coords"].get("accuracy", 0)), 1)
 
-st.info(
-    f"📍 **Status GPS Anda:**\n\n"
-    f"- **Koordinat:** Lat: `{user_lat:.6f}`, Lon: `{user_lon:.6f}` (Akurasi:"
-    f" ±{akurasi_meter}m)\n"
-    f"- **Wilayah Sesi:** **{st.session_state['kota_kab']}**"
-)
+  # Validasi Geofencing menggunakan Shapely Point & GeoDataFrame
+  point_user = Point(user_lon, user_lat)  # Format Point(longitude, latitude)
+  is_inside_geofence = False
+
+  if gdf_wilayah is not None:
+    # Cek apakah titik koordinat berada di dalam salah satu poligon wilayah
+    for geom in gdf_wilayah.geometry:
+      if geom.contains(point_user) or geom.intersects(point_user):
+        is_inside_geofence = True
+        break
+  else:
+    # Jika file geojson tidak ditemukan, izinkan sementara dengan peringatan
+    is_inside_geofence = True
+
+# Tampilkan status GPS & Lock Geofence
+if is_inside_geofence:
+  st.success(
+      f"📍 **Status GPS (Valid & Terkunci di Wilayah):**\n\n"
+      f"- **Koordinat:** Lat: `{user_lat:.6f}`, Lon: `{user_lon:.6f}` (Akurasi:"
+      f" ±{akurasi_meter}m)\n"
+      f"- **Wilayah Sesi:** **{st.session_state['kota_kab']}** (✅ Dalam Area"
+      " Operasional)"
+  )
+else:
+  st.error(
+      f"🚨 **Peringatan Lock GPS (Diluar Wilayah Operasional):**\n\n"
+      f"- **Koordinat Anda:** Lat: `{user_lat:.6f}`, Lon: `{user_lon:.6f}`\n"
+      f"- **Wilayah Terpilih:** **{st.session_state['kota_kab']}**\n\n"
+      "⚠️ Posisi Anda terdeteksi berada di luar batas zona GeoJSON wilayah"
+      f" {st.session_state['kota_kab']}. Form laporan dikunci dan tidak dapat"
+      " disubmit sampai Anda berada di dalam area operasional yang sah."
+  )
 
 # ====================================================
 # 3. IDENTIFIKASI SPG & LOKASI KUNJUNGAN
@@ -222,9 +252,13 @@ nama_warkop_manual = st.text_input(
 )
 
 # ====================================================
-# 4. FORM LAPORAN KONSUMEN
+# 4. FORM LAPORAN KONSUMEN (Hanya aktif jika di dalam geofence)
 # ====================================================
-if nama_spg_manual.strip() != "" and nama_warkop_manual.strip() != "":
+if (
+    is_inside_geofence
+    and nama_spg_manual.strip() != ""
+    and nama_warkop_manual.strip() != ""
+):
   st.success(
       f"✅ Form laporan untuk **{nama_spg_manual.strip()}** di **Kecamatan"
       f" {kecamatan_pilihan}** siap diisi."
@@ -314,10 +348,16 @@ if nama_spg_manual.strip() != "" and nama_warkop_manual.strip() != "":
             f" **{nama_spg_manual.strip()}** berhasil disimpan!"
         )
 else:
-  st.info(
-      "ℹ️ Silakan masukkan **Nama SPG** dan **Nama Warkop/LKK** terlebih"
-      " dahulu untuk membuka form."
-  )
+  if not is_inside_geofence:
+    st.warning(
+        "🔒 Form input terkunci karena posisi GPS Anda berada di luar wilayah"
+        f" {st.session_state['kota_kab']}."
+    )
+  else:
+    st.info(
+        "ℹ️ Silakan masukkan **Nama SPG** dan **Nama Warkop/LKK** terlebih"
+        " dahulu untuk membuka form."
+    )
 
 # ====================================================
 # 5. EVALUASI HARIAN & LOG REKAP (KHUSUS USER AKTIF)
@@ -345,7 +385,7 @@ if not df_user_rekap.empty:
   df_user_rekap["Nama_SPG"] = df_user_rekap["Nama_SPG"].fillna("-")
 
   # ----------------------------------------------------
-  # TABEL EVALUASI HARIAN PER TEAM SPG (Tanpa Nama SPG)
+  # TABEL EVALUASI HARIAN PER TEAM SPG
   # ----------------------------------------------------
   st.markdown("#### 📋 Tabel Evaluasi Harian Per Team SPG")
 
@@ -397,79 +437,72 @@ if not df_user_rekap.empty:
       use_container_width=True,
   )
 
-# ----------------------------------------------------
-  # Visualisasi Rute Perjalanan SPG
   # ----------------------------------------------------
-
-st.markdown("---")
-st.markdown(
-    f"### 🗺️ Visualisasi Rute Perjalanan Lapangan - {st.session_state['user_spg']}"
-)
-
-if not df_user_rekap.empty:
-  # Filter berdasarkan tanggal tertentu untuk melihat rute harian
-  daftar_tanggal = sorted(df_user_rekap["Tanggal"].dropna().unique(), reverse=True)
-  pilihan_tgl_rute = st.selectbox(
-      "Pilih Tanggal Rute Perjalanan", options=daftar_tanggal
+  # Visualisasi Rute Perjalanan SPG (Mapbox / Pydeck)
+  # ----------------------------------------------------
+  st.markdown("---")
+  st.markdown(
+      f"### 🗺️ Visualisasi Rute Perjalanan Lapangan -"
+      f" {st.session_state['user_spg']}"
   )
 
-  df_rute_harian = df_user_rekap[
-      df_user_rekap["Tanggal"] == pilihan_tgl_rute
-  ].sort_values("Waktu")
-
-  if not df_rute_harian.empty and "Latitude" in df_rute_harian.columns:
-    # Siapkan data koordinat untuk jalur (Path) dan titik (Scatter)
-    koordinat_list = df_rute_harian[["Longitude", "Latitude"]].values.tolist()
-
-    # Titik tengah peta (Center) berdasarkan rata-rata koordinat hari itu
-    center_lat = df_rute_harian["Latitude"].mean()
-    center_lon = df_rute_harian["Longitude"].mean()
-
-    # Konfigurasi Layer Mapbox / Pydeck
-    # 1. Layer Garis Rute (PathLayer)
-    path_layer = pdk.Layer(
-        "PathLayer",
-        data=[{"path": koordinat_list, "name": "Rute SPG"}],
-        get_path="path",
-        get_color=[255, 0, 0, 200],  # Warna Garis Merah
-        get_width=5,
-        pickable=True,
+  daftar_tanggal = sorted(
+      df_user_rekap["Tanggal"].dropna().unique(), reverse=True
+  )
+  if daftar_tanggal:
+    pilihan_tgl_rute = st.selectbox(
+        "Pilih Tanggal Rute Perjalanan", options=daftar_tanggal
     )
 
-    # 2. Layer Titik Pemberhentian Warkop (ScatterplotLayer)
-    scatter_layer = pdk.Layer(
-        "ScatterplotLayer",
-        data=df_rute_harian,
-        get_position=["Longitude", "Latitude"],
-        get_color=[0, 128, 255, 200],  # Warna Titik Biru
-        get_radius=50,  # Radius titik dalam meter
-        pickable=True,
-    )
+    df_rute_harian = df_user_rekap[
+        df_user_rekap["Tanggal"] == pilihan_tgl_rute
+    ].sort_values("Waktu")
 
-    # Tampilan Peta View
-    view_state = pdk.ViewState(
-        latitude=center_lat, longitude=center_lon, zoom=13, pitch=40
-    )
+    if not df_rute_harian.empty and "Latitude" in df_rute_harian.columns:
+      koordinat_list = df_rute_harian[["Longitude", "Latitude"]].values.tolist()
+      center_lat = df_rute_harian["Latitude"].mean()
+      center_lon = df_rute_harian["Longitude"].mean()
 
-    # Render Peta di Streamlit (Bisa menggunakan style Mapbox default gratis dari Pydeck)
-    r = pdk.Deck(
-        layers=[path_layer, scatter_layer],
-        initial_view_state=view_state,
-        tooltip={
-            "html": "<b>Warkop/LKK:</b> {Warkop_LKK}<br/><b>Waktu:</b>"
-            " {Waktu}<br/><b>Brand:</b> {Brand_Rokok} ({Jumlah_Bungkus} bks)",
-            "style": {"backgroundColor": "steelblue", "color": "white"},
-        },
-    )
+      path_layer = pdk.Layer(
+          "PathLayer",
+          data=[{"path": koordinat_list, "name": "Rute SPG"}],
+          get_path="path",
+          get_color=[255, 0, 0, 200],
+          get_width=5,
+          pickable=True,
+      )
 
-    st.pydeck_chart(r)
-    st.info(
-        "💡 *Arahkan kursor ke titik biru pada peta untuk melihat detail"
-        " kunjungan warkop dan waktu pelaporan.*"
-    )
-  else:
-    st.warning("Belum ada data koordinat GPS yang terekam pada tanggal ini.")
-      
+      scatter_layer = pdk.Layer(
+          "ScatterplotLayer",
+          data=df_r_rute_harian if "df_r_rute_harian" in locals() else df_rute_harian,
+          get_position=["Longitude", "Latitude"],
+          get_color=[0, 128, 255, 200],
+          get_radius=50,
+          pickable=True,
+      )
+
+      view_state = pdk.ViewState(
+          latitude=center_lat, longitude=center_lon, zoom=13, pitch=40
+      )
+
+      r = pdk.Deck(
+          layers=[path_layer, scatter_layer],
+          initial_view_state=view_state,
+          tooltip={
+              "html": "<b>Warkop/LKK:</b> {Warkop_LKK}<br/><b>Waktu:</b>"
+              " {Waktu}<br/><b>Brand:</b> {Brand_Rokok} ({Jumlah_Bungkus} bks)",
+              "style": {"backgroundColor": "steelblue", "color": "white"},
+          },
+      )
+
+      st.pydeck_chart(r)
+      st.info(
+          "💡 *Arahkan kursor ke titik biru pada peta untuk melihat detail"
+          " kunjungan warkop dan waktu pelaporan.*"
+      )
+    else:
+      st.warning("Belum ada data koordinat GPS yang terekam pada tanggal ini.")
+
   # ==========================================
   # MENU PENGATURAN / HAPUS LOG
   # ==========================================
