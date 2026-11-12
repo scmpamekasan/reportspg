@@ -185,4 +185,3 @@ else:
     st.error(pesan_validasi)
   elif nama_warkop_manual.strip() == "":
     st.info("ℹ️ Silakan masukkan nama Warkop/LKK terlebih dahulu.")
-```[cite: 5]
