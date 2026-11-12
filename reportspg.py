@@ -35,46 +35,60 @@ def load_master_wilayah():
 
 gdf_wilayah = load_master_wilayah()
 
-# Ambil daftar nama kecamatan untuk pilihan menu dropdown
 daftar_kecamatan = []
 if gdf_wilayah is not None and "nm_kecamatan" in gdf_wilayah.columns:
   daftar_kecamatan = sorted(gdf_wilayah["nm_kecamatan"].dropna().unique().tolist())
 
 # ====================================================
-# 2. GPS OTOMATIS SENYAP (TANPA TOMBOL / TANPA MENU)
+# 2. GPS AKURASI TINGGI & TOMBOL REFRESH LOKASI
 # ====================================================
 if "user_lat" not in st.session_state:
-  st.session_state["user_lat"] = -7.2575  # Default awal
+  st.session_state["user_lat"] = None
 if "user_lon" not in st.session_state:
-  st.session_state["user_lon"] = 112.7521
+  st.session_state["user_lon"] = None
 
+# Skrip JavaScript untuk memaksa akurasi tinggi (High Accuracy GPS)
 gps_component = """
 <script>
-const getLocation = () => {
+const getHighAccuracyLocation = () => {
     if (navigator.geolocation) {
+        // Indikator loading kecil di konsol
+        console.log("Meminta akses GPS akurasi tinggi...");
         navigator.geolocation.getCurrentPosition(
             (position) => {
                 const lat = position.coords.latitude;
                 const lon = position.coords.longitude;
+                const accuracy = position.coords.accuracy;
+                console.log("GPS Berhasil. Akurasi: " + accuracy + " meter");
+
                 const url = new URL(window.parent.location.href);
-                if (url.searchParams.get("lat") != lat || url.searchParams.get("lon") != lon) {
-                    url.searchParams.set("lat", lat);
-                    url.searchParams.set("lon", lon);
-                    window.parent.location.href = url.toString();
-                }
+                // Selalu update parameter lat & lon agar mendapatkan titik paling valid
+                url.searchParams.set("lat", lat);
+                url.searchParams.set("lon", lon);
+                window.parent.location.href = url.toString();
             },
             (error) => {
-                console.log("GPS Error: " + error.message);
+                console.warn("GPS Error (" + error.code + "): " + error.message);
+                alert("Gagal mendeteksi lokasi GPS. Pastikan izin lokasi (Location Permission) diaktifkan di browser HP Anda.");
             },
-            { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+            { 
+                enableHighAccuracy: true,  // Memaksa chip GPS perangkat aktif
+                timeout: 20000,            // Waktu tunggu hingga 20 detik untuk mengunci satelit
+                maximumAge: 0              // Mencegah cache lokasi lama
+            }
         );
+    } else {
+        alert("Geolocation tidak didukung oleh browser ini.");
     }
 };
-getLocation();
+
+// Jalankan otomatis saat halaman dibuka
+getHighAccuracyLocation();
 </script>
 """
 components.html(gps_component, height=0, width=0)
 
+# Ambil koordinat dari parameter URL jika berhasil dikirim oleh skrip
 params = st.query_params
 if "lat" in params and "lon" in params:
   try:
@@ -82,6 +96,21 @@ if "lat" in params and "lon" in params:
     st.session_state["user_lon"] = float(params["lon"])
   except:
     pass
+
+# Tombol manual untuk memaksa refresh GPS jika dirasa titik koordinat belum pas
+col_gps1, col_gps2 = st.columns([2, 1])
+with col_gps2:
+  if st.button("🔄 Refresh GPS"):
+    st.query_params.clear()
+    st.rerun()
+
+# Jika GPS belum terdeteksi sama sekali
+if st.session_state["user_lat"] is None or st.session_state["user_lon"] is None:
+  st.warning(
+      "⏳ Sedang mendeteksi posisi GPS akurasi tinggi... Mohon izinkan akses"
+      " lokasi jika muncul pop-up di browser HP Anda."
+  )
+  st.stop()
 
 user_lat = st.session_state["user_lat"]
 user_lon = st.session_state["user_lon"]
@@ -99,9 +128,8 @@ if gdf_wilayah is not None:
       kecamatan_saat_ini = row.get("nm_kecamatan", "Tidak diketahui")
       break
 
-# Tampilkan informasi live koordinat & posisi SPG di antarmuka
 st.info(
-    f"📍 **Status GPS Anda:**\n\n"
+    f"📍 **Status GPS Anda (Akurat):**\n\n"
     f"- **Koordinat:** Lat: `{user_lat:.6f}`, Lon: `{user_lon:.6f}`\n"
     f"- **Posisi Kecamatan Saat Ini:** **{kecamatan_saat_ini}**"
 )
@@ -115,7 +143,6 @@ nama_spg = st.selectbox(
     ["Arif Yuliadi", "Nur Muhammad Khoirul Firmansyah"],
 )
 
-# Menu Pilih Kecamatan tujuan
 kecamatan_pilihan = st.selectbox(
     "Pilih Kecamatan Tujuan Kunjungan",
     daftar_kecamatan if daftar_kecamatan else ["Memuat data..."],
@@ -133,7 +160,6 @@ lokasi_sah = False
 pesan_validasi = ""
 
 if gdf_wilayah is not None and kecamatan_pilihan:
-  # Cari poligon kecamatan yang dipilih oleh pengguna
   row_kecamatan = gdf_wilayah[
       gdf_wilayah["nm_kecamatan"] == kecamatan_pilihan
   ]
