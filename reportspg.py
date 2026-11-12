@@ -57,10 +57,9 @@ def hitung_jarak_meter(lat1, lon1, lat2, lon2):
 df_master = load_master_lokasi()
 
 # ====================================================
-# 2. DETEKSI GPS OTOMATIS SAAT HALAMAN DIBUKA
+# 2. DETEKSI GPS OTOMATIS (DI BACKGROUND)
 # ====================================================
-st.markdown("### 🛰️ Deteksi Posisi GPS Otomatis")
-# Komponen ini akan otomatis meminta izin lokasi ke browser HP/Laptop saat pertama kali dibuka
+# Komponen berjalan otomatis meminta izin lokasi browser tanpa memunculkan teks/tombol
 loc = streamlit_geolocation()
 
 user_lat = None
@@ -69,24 +68,11 @@ user_lon = None
 if loc and loc.get("latitude") and loc.get("longitude"):
   user_lat = float(loc["latitude"])
   user_lon = float(loc["longitude"])
-  st.success(
-      f"✅ Posisi GPS Terbaca Otomatis (Lat: {user_lat:.5f}, Lon:"
-      f" {user_lon:.5f})"
-  )
 else:
-  st.warning(
-      "⚠️ Mohon izinkan akses lokasi (GPS) pada browser Anda agar sistem dapat"
-      " mendeteksi posisi otomatis."
-  )
-  # Fallback simulasi manual jika GPS belum diizinkan / untuk testing
-  user_lat = st.number_input(
-      "Simulasi Latitude HP SPG", value=-7.2575, format="%.5f"
-  )
-  user_lon = st.number_input(
-      "Simulasi Longitude HP SPG", value=112.7521, format="%.5f"
-  )
-
-st.markdown("---")
+  # Fallback jika GPS belum diizinkan atau sedang proses memuat
+  # Menggunakan nilai default sementara agar tidak error saat pertama render
+  user_lat = -7.2575
+  user_lon = 112.7521
 
 # ====================================================
 # 3. PILIH PROMOTOR & LOKASI WARKOP/LKK
@@ -102,63 +88,4 @@ pilihan_warkop = st.selectbox(
 
 # Ambil data koordinat target warkop yang dipilih dari file GitHub
 data_terpilih = df_master[df_master["Nama_Warkop"] == pilihan_warkop].iloc[0]
-target_lat = float(data_terpilih["Latitude"])
-target_lon = float(data_terpilih["Longitude"])
-max_radius = float(data_terpilih.get("Radius_Meter", 150))
-
-# ====================================================
-# 4. VALIDASI JARAK RADIUS LOKASI
-# ====================================================
-jarak_saat_ini = hitung_jarak_meter(user_lat, user_lon, target_lat, target_lon)
-
-st.info(
-    f"📌 Target Warkop: **{pilihan_warkop}** | Jarak Anda saat ini: "
-    f"**{round(jarak_saat_ini, 1)} meter** (Maksimal radius: {max_radius} meter)"
-)
-
-if jarak_saat_ini <= max_radius:
-  st.success("✅ Anda berada di dalam area warkop. Silakan isi laporan di bawah.")
-  sistem_terbuka = True
-else:
-  st.error(
-      "❌ Anda berada di luar area warkop yang dipilih! Silakan mendekat ke"
-      " lokasi target untuk membuka form laporan."
-  )
-  sistem_terbuka = False
-
-# ====================================================
-# 5. FORM LAPORAN (Hanya Terbuka Jika Berada di Dalam Radius)
-# ====================================================
-if sistem_terbuka:
-  st.markdown("---")
-  with st.form("form_laporan_spg"):
-    st.markdown("### 📝 Form Input Laporan Penjualan")
-
-    brand_entry = st.selectbox(
-        "Brand",
-        [
-            "D.Super 12",
-            "D.76 Apel",
-            "D.76 Apel Royal",
-            "Black Matcha K12",
-            "Djarum 76 Aksara",
-        ],
-    )
-    omset_entry = st.number_input(
-        "Omset (Bungkus)", min_value=0, step=1, value=0
-    )
-    jumlah_setoran_entry = st.number_input(
-        "Jumlah Setoran (Rp)", min_value=0, step=500, value=0
-    )
-
-    btn_kirim = st.form_submit_button(
-        "🚀 Kirim Laporan ke Database", type="primary"
-    )
-
-    if btn_kirim:
-      st.balloons()
-      st.success(
-          f"🎉 Laporan untuk **{pilihan_warkop}** oleh **{nama_spg}** berhasil"
-          " disimpan!"
-      )
-      # Catatan: Masukkan fungsi simpan database SQLite / Google Sheets Anda di sini
+target_lat = float(data
