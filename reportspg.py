@@ -299,11 +299,11 @@ else:
   st.info("ℹ️ Silakan masukkan nama Warkop/LKK terlebih dahulu untuk membuka form.")
 
 # ====================================================
-# 5. LOG REKAP PENJUALAN & MENU PENGELOLAAN / HAPUS LOG
+# 5. EVALUASI HARIAN (DAILY EVALUATION) & REKAP
 # ====================================================
 st.markdown("---")
 st.markdown(
-    f"### 📊 Log Rekap Penjualan: {st.session_state['user_spg']} ("
+    f"### 📈 Evaluasi Harian & Log Rekap: {st.session_state['user_spg']} ("
     f"{st.session_state['kota_kab']})"
 )
 
@@ -318,19 +318,77 @@ else:
   df_user_rekap = pd.DataFrame()
 
 if not df_user_rekap.empty:
-  # Konversi kolom waktu ke datetime untuk keperluan filter hapus per hari/minggu
-  df_user_rekap["Waktu_DT"] = pd.to_datetime(
+  df_user_rekap["Tanggal"] = pd.to_datetime(
       df_user_rekap["Waktu"], errors="coerce"
+  ).dt.date
+
+  # ----------------------------------------------------
+  # TABEL EVALUASI HARIAN (Agregasi per Tanggal, SPG, dan Brand Rokok)
+  # ----------------------------------------------------
+  st.markdown("#### 📋 Tabel Evaluasi Harian")
+
+  # Groupby Tanggal, Promotor, dan Brand Rokok
+  df_eval = (
+      df_user_rekap.groupby(["Tanggal", "Promotor", "Brand_Rokok"])
+      .agg(
+          Jumlah_Titik_Warkop=(
+              "Warkop_LKK",
+              lambda x: x.nunique(),
+          ),  # Single count titik warkop
+          Konsumen_Beli=(
+              "Nama_Konsumen",
+              "count",
+          ),  # Jumlah dari konsumen yang beli
+          Jumlah_Omset=(
+              "Jumlah_Bungkus",
+              "sum",
+          ),  # Jumlah rokok yang terjual
+      )
+      .reset_index()
   )
 
-  # Tampilkan tabel rekap
+
+  # Fungsi penentuan Target & Keterangan
+  def tentukan_status(row):
+    if row["Brand_Rokok"] == "Black Matcha K12":
+      if row["Jumlah_Omset"] >= 50:
+        return "Achieved"
+      else:
+        return "Not Achieved"
+    else:
+      return "Achieved"  # Standar target untuk brand lain
+
+
+  df_eval["Status_Target"] = df_eval.apply(tentukan_status, axis=1)
+
+
+  # Styling untuk mewarnai "Not Achieved" menjadi merah
+  def style_eval(val):
+    if val == "Not Achieved":
+      return "color: red; font-weight: bold;"
+    elif val == "Achieved":
+      return "color: green; font-weight: bold;"
+    return ""
+
+
   st.dataframe(
-      df_user_rekap.drop(columns=["Waktu_DT"], errors="ignore"),
+      df_eval.style.map(
+          style_eval, subset=["Status_Target"]
+      ),  # Menggunakan .map untuk pandas terbaru (atau .applymap)
+      use_container_width=True,
+  )
+
+  st.markdown("---")
+  st.markdown("#### 📑 Log Detail Transaksi & Pengaturan")
+
+  # Tampilkan tabel log detail
+  st.dataframe(
+      df_user_rekap.drop(columns=["Tanggal"], errors="ignore"),
       use_container_width=True,
   )
 
   # ==========================================
-  # MENU PENGATURAN / OPSI HAPUS LOG
+  # MENU PENGATURAN / HAPUS LOG
   # ==========================================
   with st.expander("⚙️ Menu Pengaturan & Hapus Log"):
     tab_row, tab_hari, tab_minggu, tab_all = st.tabs([
@@ -340,10 +398,7 @@ if not df_user_rekap.empty:
         "Hapus Semua (All)",
     ])
 
-    # 1. HAPUS PER ROW (BERDASARKAN INDEKS / NAMA KONSUMEN & WAKTU)
     with tab_row:
-      st.write("Pilih data spesifik yang ingin dihapus:")
-      # Buat label pilihan unik untuk setiap baris milik user
       options_row = []
       for idx, row in df_user_rekap.iterrows():
         label = (
@@ -362,7 +417,6 @@ if not df_user_rekap.empty:
       if st.button("🗑️ Hapus Baris Terpilih", type="secondary"):
         if selected_row_to_delete:
           original_idx = selected_row_to_delete[0]
-          # Hapus dari master global berdasarkan indeks asli
           df_master_all = df_master_all.drop(original_idx).reset_index(
               drop=True
           )
@@ -370,19 +424,13 @@ if not df_user_rekap.empty:
           st.success("✅ Berhasil menghapus baris data terpilih!")
           st.rerun()
 
-    # 2. HAPUS PER HARI
     with tab_hari:
-      st.write("Pilih tanggal untuk menghapus semua log pada hari tersebut:")
-      # Ambil daftar tanggal unik dari data user
-      unique_dates = (
-          df_user_rekap["Waktu_DT"].dt.date.dropna().unique().tolist()
-      )
+      unique_dates = df_user_rekap["Tanggal"].dropna().unique().tolist()
       unique_dates = sorted(unique_dates, reverse=True)
 
       if unique_dates:
         selected_date = st.selectbox("Pilih Tanggal", options=unique_dates)
         if st.button("🗑️ Hapus Log Tanggal Ini", type="secondary"):
-          # Filter baris master yang BUKAN milik user ini ATAU milik user ini tapi beda tanggal
           mask_user_other_date = ~(
               (df_master_all["Promotor"] == st.session_state["user_spg"])
               & (
@@ -403,9 +451,7 @@ if not df_user_rekap.empty:
       else:
         st.info("Tidak ada data tanggal yang tersedia.")
 
-    # 3. HAPUS PER MINGGU (7 Hari ke belakang / pilihan minggu)
     with tab_minggu:
-      st.write("Hapus log berdasarkan rentang 7 hari terakhir:")
       if st.button("🗑️ Hapus Log 7 Hari Terakhir", type="secondary"):
         cutoff_date = datetime.now() - timedelta(days=7)
         mask_user_keep = ~(
@@ -420,7 +466,6 @@ if not df_user_rekap.empty:
         st.success("✅ Berhasil menghapus log dalam 7 hari terakhir!")
         st.rerun()
 
-    # 4. HAPUS SEMUA (ALL DATA) MILIK USER INI
     with tab_all:
       st.warning(
           "⚠️ Perhatian: Tindakan ini akan menghapus **seluruh** riwayat log"
@@ -435,7 +480,6 @@ if not df_user_rekap.empty:
           type="primary",
           disabled=not confirm_delete_all,
       ):
-        # Buang semua baris yang promotor-nya sama dengan user aktif
         df_master_all = df_master_all[
             df_master_all["Promotor"] != st.session_state["user_spg"]
         ].reset_index(drop=True)
@@ -446,12 +490,13 @@ if not df_user_rekap.empty:
         st.rerun()
 
   # ==========================================
-  # TOMBOL DOWNLOAD EXCEL
+  # TOMBOL DOWNLOAD EXCEL (Mencakup Evaluasi & Detail)
   # ==========================================
   output = BytesIO()
   with pd.ExcelWriter(output, engine="openpyxl") as writer:
-    df_user_rekap.drop(columns=["Waktu_DT"], errors="ignore").to_excel(
-        writer, index=False, sheet_name="Rekap Penjualan SPG"
+    df_eval.to_excel(writer, index=False, sheet_name="Evaluasi Harian")
+    df_user_rekap.drop(columns=["Tanggal"], errors="ignore").to_excel(
+        writer, index=False, sheet_name="Detail Transaksi"
     )
   excel_data = output.getvalue()
 
@@ -459,7 +504,7 @@ if not df_user_rekap.empty:
       label=f"📥 Download Rekap Excel (.xlsx) - {st.session_state['user_spg']}",
       data=excel_data,
       file_name=(
-          f"rekap_penjualan_{st.session_state['user_spg'].replace(' ', '_')}_"
+          f"rekap_evaluasi_{st.session_state['user_spg'].replace(' ', '_')}_"
           f"{st.session_state['kota_kab']}_"
           f"{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
       ),
