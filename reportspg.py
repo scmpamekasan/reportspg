@@ -50,8 +50,7 @@ if not st.session_state["logged_in"]:
         "Plat Nomor Kendaraan", placeholder="Contoh: L 1234 AB"
     )
 
-    # Password (Disesuaikan berdasarkan Usernya saja, misal format: password[nomor_spg] atau bebas sesuai keinginan)
-    # Contoh di sini menggunakan password standar berbasis user, misal: "spg123" + nomor
+    # Password berdasarkan user (Contoh: Team SPG 1 passwordnya spg1, atau universal spg123)
     password_input = st.text_input(
         "Password", type="password", placeholder="Masukkan password"
     )
@@ -59,15 +58,9 @@ if not st.session_state["logged_in"]:
     btn_login = st.form_submit_button("Masuk Aplikasi", type="primary")
 
     if btn_login:
-      # Logika Password berdasarkan user (Contoh: Team SPG 1 passwordnya "spg1", Team SPG 2 "spg2", dst., atau universal aman "spg123")
-      # Ekstrak nomor SPG untuk verifikasi password dinamis
       spg_num = pilihan_user.replace("Team SPG ", "")
-      expected_password = (
-          f"spg{spg_num}"  # Contoh: Team SPG 1 passwordnya 'spg1'
-      )
+      expected_password = f"spg{spg_num}"
 
-      # Anda juga bisa menetapkan password universal untuk semua SPG, misal: "laporanspg2026"
-      # Ganti kondisi di bawah sesuai kebutuhan sandi Anda
       if password_input == expected_password or password_input == "spg123":
         if not plat_input.strip():
           st.warning("Mohon isi plat nomor kendaraan terlebih dahulu.")
@@ -83,7 +76,7 @@ if not st.session_state["logged_in"]:
             f" spg{spg_num} atau spg123)"
         )
 
-  st.stop()  # Hentikan eksekusi halaman utama sebelum berhasil login
+  st.stop()  # Hentikan eksekusi sebelum login berhasil
 
 # ====================================================
 # APLIKASI UTAMA (SETELAH LOGIN BERHASIL)
@@ -109,21 +102,28 @@ st.markdown("---")
 
 
 # ====================================================
-# 1. AMBIL DATA MASTER WILAYAH DARI FILE LOKAL GITHUB
+# 1. AMBIL DATA MASTER WILAYAH DINAMIS (SURABAYA / GRESIK)
 # ====================================================
 @st.cache_data
-def load_master_wilayah():
+def load_master_wilayah(kota):
+  # Tentukan nama file geojson berdasarkan pilihan kota saat login
+  if kota == "Surabaya":
+    filename = "Surabaya Barat.geojson"
+  else:
+    filename = "Gresik.geojson"
+
   try:
-    with open("Surabaya Barat.geojson", "r", encoding="utf-8") as f:
+    with open(filename, "r", encoding="utf-8") as f:
       data = json.load(f)
     gdf_master = gpd.GeoDataFrame.from_features(data)
     return gdf_master
   except Exception as e:
-    st.error(f"Gagal memuat file master wilayah 'Surabaya Barat.geojson': {e}")
+    st.error(f"Gagal memuat file master wilayah '{filename}': {e}")
     return None
 
 
-gdf_wilayah = load_master_wilayah()
+# Muat file GeoJSON sesuai wilayah yang dipilih saat login
+gdf_wilayah = load_master_wilayah(st.session_state["kota_kab"])
 
 daftar_kecamatan = []
 if gdf_wilayah is not None and "nm_kecamatan" in gdf_wilayah.columns:
@@ -149,7 +149,7 @@ akurasi_meter = round(float(loc["coords"].get("accuracy", 0)), 1)
 # 3. DETEKSI POSISI SPG SAAT INI (KECAMATAN & KOORDINAT)
 # ====================================================
 titik_spg = Point(user_lon, user_lat)
-kecamatan_saat_ini = "Di luar wilayah Surabaya Barat"
+kecamatan_saat_ini = f"Di luar wilayah {st.session_state['kota_kab']}"
 
 if gdf_wilayah is not None:
   for _, row in gdf_wilayah.iterrows():
@@ -170,7 +170,7 @@ st.info(
 # ====================================================
 st.markdown("### 📋 Lokasi Kunjungan")
 kecamatan_pilihan = st.selectbox(
-    "Pilih Kecamatan Tujuan Kunjungan",
+    f"Pilih Kecamatan Tujuan Kunjungan ({st.session_state['kota_kab']})",
     daftar_kecamatan if daftar_kecamatan else ["Memuat data..."],
 )
 
@@ -318,6 +318,7 @@ if len(st.session_state["laporan_list"]) > 0:
       data=excel_data,
       file_name=(
           f"rekap_penjualan_{st.session_state['user_spg'].replace(' ', '_')}_"
+          f"{st.session_state['kota_kab']}_"
           f"{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
       ),
       mime=(
