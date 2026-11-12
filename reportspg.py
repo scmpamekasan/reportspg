@@ -1,11 +1,10 @@
 from datetime import datetime
 import json
-import math
 import geopandas as gpd
 import pandas as pd
 from shapely.geometry import Point
 import streamlit as st
-import streamlit.components.v1 as components
+from streamlit_js_eval import get_geolocation
 
 # Konfigurasi Halaman Streamlit
 st.set_page_config(
@@ -41,78 +40,22 @@ if gdf_wilayah is not None and "nm_kecamatan" in gdf_wilayah.columns:
   daftar_kecamatan = sorted(gdf_wilayah["nm_kecamatan"].dropna().unique().tolist())
 
 # ====================================================
-# 2. GPS AKURASI TINGGI (ALLOW CURRENT LOCATION)
+# 2. AMBIL KOORDINAT GPS OTOMATIS SAAT WEB DIBUKA
 # ====================================================
-# Jika belum ada parameter GPS, set ke None agar tidak pakai default keliru
-if "user_lat" not in st.session_state:
-  st.session_state["user_lat"] = None
-if "user_lon" not in st.session_state:
-  st.session_state["user_lon"] = None
+# Memanggil GPS browser secara langsung dengan akurasi tinggi
+loc = get_geolocation()
 
-# Komponen JS untuk memaksa izin lokasi dan akurasi tinggi
-gps_component = """
-<script>
-const getAccurateLocation = () => {
-    if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(
-            (position) => {
-                const lat = position.coords.latitude;
-                const lon = position.coords.longitude;
-                const accuracy = position.coords.accuracy;
-                console.log("GPS Akurat OK. Akurasi: " + accuracy + " meter");
-
-                const url = new URL(window.parent.location.href);
-                // Hanya refresh jika koordinat berbeda
-                if (url.searchParams.get("lat") != lat || url.searchParams.get("lon") != lon) {
-                    url.searchParams.set("lat", lat);
-                    url.searchParams.set("lon", lon);
-                    window.parent.location.href = url.toString();
-                }
-            },
-            (error) => {
-                console.warn("GPS Error (" + error.code + "): " + error.message);
-            },
-            { 
-                enableHighAccuracy: true,  // Memaksa modul GPS perangkat menyala
-                timeout: 15000,            // Waktu tunggu hingga 15 detik
-                maximumAge: 0              // Tidak pakai cache lokasi lama
-            }
-        );
-    }
-};
-getAccurateLocation();
-</script>
-"""
-components.html(gps_component, height=0, width=0)
-
-# Ambil koordinat dari parameter URL hasil deteksi GPS browser
-params = st.query_params
-if "lat" in params and "lon" in params:
-  try:
-    st.session_state["user_lat"] = float(params["lat"])
-    st.session_state["user_lon"] = float(params["lon"])
-  except (ValueError, TypeError):
-    pass
-
-# Tombol manual untuk memaksa refresh lokasi GPS jika meleset
-col_info, col_btn = st.columns([2, 1])
-with col_btn:
-  if st.button("🔄 Ambil Ulang GPS"):
-    st.query_params.clear()
-    st.rerun()
-
-# Jika GPS belum terkunci / izin belum diberikan
-if st.session_state["user_lat"] is None or st.session_state["user_lon"] is None:
+if loc is None:
   st.warning(
-      "⏳ **Meminta akses GPS akurasi tinggi...**\n\nPastikan Anda telah menekan"
-      " tombol **'Allow' / 'Izinkan'** pada pop-up izin lokasi di browser HP"
-      " Anda. Jika belum muncul atau meleset, klik tombol **Ambil Ulang"
-      " GPS** di atas."
+      "⏳ Sedang mengunci titik GPS lokasi Anda... Pastikan izin lokasi"
+      " (**Allow / Izinkan**) aktif pada browser Anda."
   )
   st.stop()
 
-user_lat = float(st.session_state["user_lat"])
-user_lon = float(st.session_state["user_lon"])
+# Ekstrak koordinat asli dari perangkat SPG
+user_lat = float(loc["coords"]["latitude"])
+user_lon = float(loc["coords"]["longitude"])
+akurasi_meter = round(float(loc["coords"].get("accuracy", 0)), 1)
 
 # ====================================================
 # 3. DETEKSI POSISI SPG SAAT INI (KECAMATAN & KOORDINAT)
@@ -129,8 +72,8 @@ if gdf_wilayah is not None:
 
 # Tampilkan informasi live koordinat & posisi SPG di antarmuka
 st.info(
-    f"📍 **Status GPS Anda (Terkunci):**\n\n"
-    f"- **Koordinat:** Lat: `{user_lat:.6f}`, Lon: `{user_lon:.6f}`\n"
+    f"📍 **Status GPS Anda:**\n\n"
+    f"- **Koordinat:** Lat: `{user_lat:.6f}`, Lon: `{user_lon:.6f}` (Akurasi: ±{akurasi_meter}m)\n"
     f"- **Posisi Kecamatan Saat Ini:** **{kecamatan_saat_ini}**"
 )
 
@@ -161,7 +104,6 @@ lokasi_sah = False
 pesan_validasi = ""
 
 if gdf_wilayah is not None and kecamatan_pilihan:
-  # Cari poligon kecamatan yang dipilih oleh pengguna
   row_kecamatan = gdf_wilayah[
       gdf_wilayah["nm_kecamatan"] == kecamatan_pilihan
   ]
