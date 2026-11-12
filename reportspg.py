@@ -57,13 +57,15 @@ def save_database(df):
 # ====================================================
 if "logged_in" not in st.session_state:
   st.session_state["logged_in"] = False
+if "user_spg" not in st.session_state:
+  st.session_state["user_spg"] = ""
 if "kota_kab" not in st.session_state:
   st.session_state["kota_kab"] = ""
 if "plat_kendaraan" not in st.session_state:
   st.session_state["plat_kendaraan"] = ""
 
 # ====================================================
-# MENU LOGIN PERTAMA
+# MENU LOGIN PERTAMA (Team SPG 1 sampai 20)
 # ====================================================
 if not st.session_state["logged_in"]:
   st.markdown(
@@ -72,6 +74,8 @@ if not st.session_state["logged_in"]:
   )
 
   with st.form("form_login"):
+    list_spg = [f"Team SPG {i}" for i in range(1, 21)]
+    pilihan_user = st.selectbox("Pilih User (Team SPG)", list_spg)
     pilihan_kota = st.selectbox(
         "Pilih Kota / Kabupaten", ["Surabaya", "Gresik"]
     )
@@ -85,17 +89,23 @@ if not st.session_state["logged_in"]:
     btn_login = st.form_submit_button("Masuk Aplikasi", type="primary")
 
     if btn_login:
-      # Password universal atau standar
-      if password_input == "spg123" or password_input == "admin2026":
+      spg_num = pilihan_user.replace("Team SPG ", "")
+      expected_password = f"spg{spg_num}"  # Contoh: Team SPG 1 passwordnya 'spg1'
+
+      if password_input == expected_password or password_input == "spg123":
         if not plat_input.strip():
           st.warning("Mohon isi plat nomor kendaraan terlebih dahulu.")
         else:
           st.session_state["logged_in"] = True
+          st.session_state["user_spg"] = pilihan_user
           st.session_state["kota_kab"] = pilihan_kota
           st.session_state["plat_kendaraan"] = plat_input.strip().upper()
           st.rerun()
       else:
-        st.error("❌ Password salah! (Gunakan password default: spg123)")
+        st.error(
+            f"❌ Password salah untuk {pilihan_user}! (Petunjuk sandi default:"
+            f" spg{spg_num} atau spg123)"
+        )
 
   st.stop()
 
@@ -108,7 +118,8 @@ st.markdown(
 )
 
 st.success(
-    f"🏙️ **Wilayah:** {st.session_state['kota_kab']} | 🚗 **Plat:**"
+    f"👤 **Login sebagai:** {st.session_state['user_spg']} | 🏙️ **Wilayah:**"
+    f" {st.session_state['kota_kab']} | 🚗 **Plat:**"
     f" {st.session_state['plat_kendaraan']}"
 )
 
@@ -183,16 +194,9 @@ st.info(
 )
 
 # ====================================================
-# 3. PILIH NAMA SPG & LOKASI KUNJUNGAN
+# 3. PILIH KECAMATAN TUJUAN & WARKOP
 # ====================================================
-st.markdown("### 👤 Identifikasi SPG & Lokasi Kunjungan")
-
-# Pilihan Nama SPG sesuai permintaan
-nama_spg = st.selectbox(
-    "Pilih Nama SPG",
-    ["Nanda", "Aci", "Nia", "Dewi"],
-)
-
+st.markdown("### 📋 Lokasi Kunjungan")
 kecamatan_pilihan = st.selectbox(
     f"Pilih Kecamatan Tujuan Kunjungan ({st.session_state['kota_kab']})",
     daftar_kecamatan if daftar_kecamatan else ["Kecamatan Umum"],
@@ -208,15 +212,17 @@ nama_warkop_manual = st.text_input(
 # ====================================================
 if nama_warkop_manual.strip() != "":
   st.success(
-      f"✅ Form laporan untuk **SPG {nama_spg}** di **Kecamatan"
-      f" {kecamatan_pilihan}** siap diisi."
+      f"✅ Form laporan di **Kecamatan {kecamatan_pilihan}** siap diisi."
   )
 
   st.markdown("---")
   with st.form("form_laporan_spg"):
     st.markdown("### 📝 Form Input Laporan Konsumen")
 
-    st.write(f"**SPG:** {nama_spg} | **Warkop/LKK:** {nama_warkop_manual}")
+    st.write(
+        f"**User:** {st.session_state['user_spg']} |"
+        f" **Warkop/LKK:** {nama_warkop_manual}"
+    )
 
     brand_entry = st.selectbox(
         "Brand Rokok",
@@ -265,7 +271,7 @@ if nama_warkop_manual.strip() != "":
 
         data_baru = {
             "Waktu": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "Promotor": nama_spg,
+            "Promotor": st.session_state["user_spg"],
             "Kota_Kab": st.session_state["kota_kab"],
             "Plat_Kendaraan": st.session_state["plat_kendaraan"],
             "Kecamatan": kecamatan_pilihan,
@@ -289,27 +295,27 @@ if nama_warkop_manual.strip() != "":
 
         st.balloons()
         st.success(
-            f"🎉 Laporan konsumen **{nama_konsumen}** oleh **{nama_spg}** di"
-            f" **{nama_warkop_manual}** berhasil disimpan!"
+            f"🎉 Laporan konsumen **{nama_konsumen}** oleh"
+            f" **{st.session_state['user_spg']}** berhasil disimpan!"
         )
 else:
   st.info("ℹ️ Silakan masukkan nama Warkop/LKK terlebih dahulu untuk membuka form.")
 
 # ====================================================
-# 5. EVALUASI HARIAN & LOG REKAP (FILTER SESUAI SPG AKTIF)
+# 5. EVALUASI HARIAN & LOG REKAP (KHUSUS USER AKTIF)
 # ====================================================
 st.markdown("---")
 st.markdown(
-    f"### 📈 Evaluasi Harian & Log Rekap: SPG {nama_spg} ("
+    f"### 📈 Evaluasi Harian & Log Rekap: {st.session_state['user_spg']} ("
     f"{st.session_state['kota_kab']})"
 )
 
 df_master_all = load_database()
 
-# Filter data HANYA untuk Nama SPG yang sedang dipilih
+# Filter data HANYA untuk user yang sedang login
 if not df_master_all.empty and "Promotor" in df_master_all.columns:
   df_user_rekap = df_master_all[
-      df_master_all["Promotor"] == nama_spg
+      df_master_all["Promotor"] == st.session_state["user_spg"]
   ].copy()
 else:
   df_user_rekap = pd.DataFrame()
@@ -327,9 +333,18 @@ if not df_user_rekap.empty:
   df_eval = (
       df_user_rekap.groupby(["Tanggal", "Promotor", "Brand_Rokok"])
       .agg(
-          Jumlah_Titik_Warkop=("Warkop_LKK", lambda x: x.nunique()),
-          Konsumen_Beli=("Nama_Konsumen", "count"),
-          Jumlah_Omset=("Jumlah_Bungkus", "sum"),
+          Jumlah_Titik_Warkop=(
+              "Warkop_LKK",
+              lambda x: x.nunique(),
+          ),  # Single count titik warkop
+          Konsumen_Beli=(
+              "Nama_Konsumen",
+              "count",
+          ),  # Jumlah dari konsumen yang beli
+          Jumlah_Omset=(
+              "Jumlah_Bungkus",
+              "sum",
+          ),  # Jumlah rokok yang terjual
       )
       .reset_index()
   )
@@ -414,7 +429,7 @@ if not df_user_rekap.empty:
         selected_date = st.selectbox("Pilih Tanggal", options=unique_dates)
         if st.button("🗑️ Hapus Log Tanggal Ini", type="secondary"):
           mask_user_other_date = ~(
-              (df_master_all["Promotor"] == nama_spg)
+              (df_master_all["Promotor"] == st.session_state["user_spg"])
               & (
                   pd.to_datetime(
                       df_master_all["Waktu"], errors="coerce"
@@ -437,7 +452,7 @@ if not df_user_rekap.empty:
       if st.button("🗑️ Hapus Log 7 Hari Terakhir", type="secondary"):
         cutoff_date = datetime.now() - timedelta(days=7)
         mask_user_keep = ~(
-            (df_master_all["Promotor"] == nama_spg)
+            (df_master_all["Promotor"] == st.session_state["user_spg"])
             & (
                 pd.to_datetime(df_master_all["Waktu"], errors="coerce")
                 >= cutoff_date
@@ -451,7 +466,8 @@ if not df_user_rekap.empty:
     with tab_all:
       st.warning(
           "⚠️ Perhatian: Tindakan ini akan menghapus **seluruh** riwayat log"
-          f" rekap penjualan atas nama SPG {nama_spg} secara permanen!"
+          f" rekap penjualan atas nama {st.session_state['user_spg']} secara"
+          " permanen!"
       )
       confirm_delete_all = st.checkbox(
           "Saya yakin ingin menghapus semua data saya"
@@ -462,7 +478,7 @@ if not df_user_rekap.empty:
           disabled=not confirm_delete_all,
       ):
         df_master_all = df_master_all[
-            df_master_all["Promotor"] != nama_spg
+            df_master_all["Promotor"] != st.session_state["user_spg"]
         ].reset_index(drop=True)
         save_database(df_master_all)
         st.success(
@@ -482,10 +498,11 @@ if not df_user_rekap.empty:
   excel_data = output.getvalue()
 
   st.download_button(
-      label=f"📥 Download Rekap Excel (.xlsx) - SPG {nama_spg}",
+      label=f"📥 Download Rekap Excel (.xlsx) - {st.session_state['user_spg']}",
       data=excel_data,
       file_name=(
-          f"rekap_evaluasi_{nama_spg}_{st.session_state['kota_kab']}_"
+          f"rekap_evaluasi_{st.session_state['user_spg'].replace(' ', '_')}_"
+          f"{st.session_state['kota_kab']}_"
           f"{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
       ),
       mime=(
@@ -494,4 +511,7 @@ if not df_user_rekap.empty:
       type="primary",
   )
 else:
-  st.info(f"Belum ada data laporan tersimpan untuk SPG {nama_spg}.")
+  st.info(
+      f"Belum ada data laporan tersimpan untuk {st.session_state['user_spg']}."
+  )
+```[cite: 5]
