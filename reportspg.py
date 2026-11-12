@@ -33,7 +33,7 @@ def load_master_lokasi():
         "Nama_Warkop": ["Warkop Cak No", "Warkop Barokah", "LKK Bahagia"],
         "Zona": ["Surabaya Barat", "Surabaya Barat", "Surabaya Barat"],
         "Latitude": [-7.2575, -7.2600, -7.2500],
-        "Longitude": [112.7521, [112.7550], 112.7400],
+        "Longitude": [112.7521, 112.7550, 112.7400],
         "Radius_Meter": [100, 100, 150],  # Toleransi jarak dalam meter
     }
     return pd.DataFrame(data_dummy)
