@@ -109,7 +109,7 @@ def load_master_wilayah(kota):
   # Tentukan nama file geojson berdasarkan pilihan kota saat login
   if kota == "Surabaya":
     filename = "Surabaya Barat.geojson"
-  else:
+  if kota == "Gresik":
     filename = "Gresik.geojson"
 
   try:
