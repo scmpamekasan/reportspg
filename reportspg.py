@@ -46,7 +46,6 @@ def load_database():
   if os.path.exists(DB_FILE):
     try:
       df = pd.read_csv(DB_FILE)
-      # Pastikan semua kolom standar ada (mengatasi file CSV versi lama)
       for col in EXPECTED_COLUMNS:
         if col not in df.columns:
           df[col] = "-"
@@ -235,8 +234,9 @@ if nama_spg_manual.strip() != "" and nama_warkop_manual.strip() != "":
     st.markdown("### 📝 Form Input Laporan Konsumen")
 
     st.write(
-        f"**User:** {st.session_state['user_spg']} | **SPG:**"
-        f" {nama_spg_manual.strip()} | **Warkop/LKK:** {nama_warkop_manual}"
+        f"**Team Login:** {st.session_state['user_spg']} | **Nama SPG:**"
+        f" {nama_spg_manual.strip()} | **Warkop/LKK:**"
+        f" {nama_warkop_manual.strip()}"
     )
 
     brand_entry = st.selectbox(
@@ -309,9 +309,8 @@ if nama_spg_manual.strip() != "" and nama_warkop_manual.strip() != "":
 
         st.balloons()
         st.success(
-            f"🎉 Laporan konsumen **{nama_konsumen}** oleh"
-            f" **{nama_spg_manual.strip()}** ({st.session_state['user_spg']})"
-            " berhasil disimpan!"
+            f"🎉 Laporan konsumen **{nama_konsumen}** oleh SPG"
+            f" **{nama_spg_manual.strip()}** berhasil disimpan!"
         )
 else:
   st.info(
@@ -345,12 +344,12 @@ if not df_user_rekap.empty:
   df_user_rekap["Nama_SPG"] = df_user_rekap["Nama_SPG"].fillna("-")
 
   # ----------------------------------------------------
-  # TABEL EVALUASI HARIAN
+  # TABEL EVALUASI HARIAN PER TEAM SPG (Tanpa Nama SPG)
   # ----------------------------------------------------
-  st.markdown("#### 📋 Tabel Evaluasi Harian SPG")
+  st.markdown("#### 📋 Tabel Evaluasi Harian Per Team SPG")
 
   df_eval = (
-      df_user_rekap.groupby(["Tanggal", "Promotor", "Nama_SPG", "Brand_Rokok"])
+      df_user_rekap.groupby(["Tanggal", "Promotor", "Brand_Rokok"])
       .agg(
           Jumlah_Titik_Warkop=("Warkop_LKK", lambda x: x.nunique()),
           Konsumen_Beli=("Nama_Konsumen", "count"),
@@ -359,16 +358,22 @@ if not df_user_rekap.empty:
       .reset_index()
   )
 
+
   def tentukan_status(row):
-    if row["Brand_Rokok"] == "Black Matcha K12":
-      if row["Jumlah_Omset"] >= 50:
-        return "Achieved"
-      else:
-        return "Not Achieved"
+    brand = row["Brand_Rokok"]
+    omset = row["Jumlah_Omset"]
+    if brand == "Black Matcha K12":
+      return "Achieved" if omset >= 100 else "Not Achieved"
+    elif brand == "D.Super 12":
+      return "Achieved" if omset >= 80 else "Not Achieved"
+    elif brand == "D.76 Apel Royal":
+      return "Achieved" if omset >= 80 else "Not Achieved"
     else:
       return "Achieved"
 
+
   df_eval["Status_Target"] = df_eval.apply(tentukan_status, axis=1)
+
 
   def style_eval(val):
     if val == "Not Achieved":
@@ -376,6 +381,7 @@ if not df_user_rekap.empty:
     elif val == "Achieved":
       return "color: green; font-weight: bold;"
     return ""
+
 
   st.dataframe(
       df_eval.style.map(style_eval, subset=["Status_Target"]),
@@ -405,8 +411,9 @@ if not df_user_rekap.empty:
       options_row = []
       for idx, row in df_user_rekap.iterrows():
         label = (
-            f"[{row['Waktu']}] {row['Nama_SPG']} | {row['Nama_Konsumen']} -"
-            f" {row['Warkop_LKK']} ({row['Brand_Rokok']})"
+            f"[{row['Waktu']}] SPG: {row['Nama_SPG']} | Konsumen:"
+            f" {row['Nama_Konsumen']} - {row['Warkop_LKK']}"
+            f" ({row['Brand_Rokok']})"
         )
         options_row.append((idx, label))
 
