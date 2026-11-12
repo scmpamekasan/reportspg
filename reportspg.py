@@ -12,16 +12,101 @@ st.set_page_config(
     page_title="Laporan SPG Mobile", page_icon="📍", layout="centered"
 )
 
+# ====================================================
+# INISIALISASI SESSION STATE UNTUK LOGIN & REKAP
+# ====================================================
+if "logged_in" not in st.session_state:
+  st.session_state["logged_in"] = False
+if "user_spg" not in st.session_state:
+  st.session_state["user_spg"] = ""
+if "kota_kab" not in st.session_state:
+  st.session_state["kota_kab"] = ""
+if "plat_kendaraan" not in st.session_state:
+  st.session_state["plat_kendaraan"] = ""
+if "laporan_list" not in st.session_state:
+  st.session_state["laporan_list"] = []
+
+# ====================================================
+# MENU LOGIN PERTAMA
+# ====================================================
+if not st.session_state["logged_in"]:
+  st.markdown(
+      "<h2 style='text-align: center;'>🔐 Login Portal Laporan SPG</h2>",
+      unsafe_allow_html=True,
+  )
+
+  with st.form("form_login"):
+    # Pilihan Team SPG 1 sampai 20
+    list_spg = [f"Team SPG {i}" for i in range(1, 21)]
+    pilihan_user = st.selectbox("Pilih User (Team SPG)", list_spg)
+
+    # Pilihan Kota / Kabupaten
+    pilihan_kota = st.selectbox(
+        "Pilih Kota / Kabupaten", ["Surabaya", "Gresik"]
+    )
+
+    # Input Plat Kendaraan (Bebas)
+    plat_input = st.text_input(
+        "Plat Nomor Kendaraan", placeholder="Contoh: L 1234 AB"
+    )
+
+    # Password (Disesuaikan berdasarkan Usernya saja, misal format: password[nomor_spg] atau bebas sesuai keinginan)
+    # Contoh di sini menggunakan password standar berbasis user, misal: "spg123" + nomor
+    password_input = st.text_input(
+        "Password", type="password", placeholder="Masukkan password"
+    )
+
+    btn_login = st.form_submit_button("Masuk Aplikasi", type="primary")
+
+    if btn_login:
+      # Logika Password berdasarkan user (Contoh: Team SPG 1 passwordnya "spg1", Team SPG 2 "spg2", dst., atau universal aman "spg123")
+      # Ekstrak nomor SPG untuk verifikasi password dinamis
+      spg_num = pilihan_user.replace("Team SPG ", "")
+      expected_password = (
+          f"spg{spg_num}"  # Contoh: Team SPG 1 passwordnya 'spg1'
+      )
+
+      # Anda juga bisa menetapkan password universal untuk semua SPG, misal: "laporanspg2026"
+      # Ganti kondisi di bawah sesuai kebutuhan sandi Anda
+      if password_input == expected_password or password_input == "spg123":
+        if not plat_input.strip():
+          st.warning("Mohon isi plat nomor kendaraan terlebih dahulu.")
+        else:
+          st.session_state["logged_in"] = True
+          st.session_state["user_spg"] = pilihan_user
+          st.session_state["kota_kab"] = pilihan_kota
+          st.session_state["plat_kendaraan"] = plat_input.strip().upper()
+          st.rerun()
+      else:
+        st.error(
+            f"❌ Password salah untuk {pilihan_user}! (Petunjuk sandi default:"
+            f" spg{spg_num} atau spg123)"
+        )
+
+  st.stop()  # Hentikan eksekusi halaman utama sebelum berhasil login
+
+# ====================================================
+# APLIKASI UTAMA (SETELAH LOGIN BERHASIL)
+# ====================================================
 st.markdown(
     "<h2 style='text-align: center;'>📍 Portal Laporan SPG Lapangan</h2>",
     unsafe_allow_html=True,
 )
 
-# ====================================================
-# INISIALISASI DATABASE SESSION STATE UNTUK REKAP
-# ====================================================
-if "laporan_list" not in st.session_state:
-  st.session_state["laporan_list"] = []
+# Tampilkan informasi sesi login di bagian atas
+st.success(
+    f"👤 **Login sebagai:** {st.session_state['user_spg']} | 🏙️ **Wilayah:**"
+    f" {st.session_state['kota_kab']} | 🚗 **Plat:**"
+    f" {st.session_state['plat_kendaraan']}"
+)
+
+# Tombol Logout kecil
+if st.button("🚪 Keluar / Ganti Akun"):
+  st.session_state["logged_in"] = False
+  st.rerun()
+
+st.markdown("---")
+
 
 # ====================================================
 # 1. AMBIL DATA MASTER WILAYAH DARI FILE LOKAL GITHUB
@@ -81,14 +166,9 @@ st.info(
 )
 
 # ====================================================
-# 4. IDENTIFIKASI TUGAS & PILIH KECAMATAN TUJUAN
+# 4. PILIH KECAMATAN TUJUAN & WARKOP
 # ====================================================
-st.markdown("### 👤 Identifikasi Tugas & Lokasi")
-nama_spg = st.selectbox(
-    "Pilih Nama Promotor / SPG",
-    ["Arif Yuliadi", "Nur Muhammad Khoirul Firmansyah"],
-)
-
+st.markdown("### 📋 Lokasi Kunjungan")
 kecamatan_pilihan = st.selectbox(
     "Pilih Kecamatan Tujuan Kunjungan",
     daftar_kecamatan if daftar_kecamatan else ["Memuat data..."],
@@ -187,7 +267,9 @@ if lokasi_sah and nama_warkop_manual.strip() != "":
 
         data_baru = {
             "Waktu": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "Promotor": nama_spg,
+            "Promotor": st.session_state["user_spg"],
+            "Kota_Kab": st.session_state["kota_kab"],
+            "Plat_Kendaraan": st.session_state["plat_kendaraan"],
             "Kecamatan": kecamatan_pilihan,
             "Warkop_LKK": nama_warkop_manual,
             "Brand_Rokok": brand_entry,
@@ -235,7 +317,8 @@ if len(st.session_state["laporan_list"]) > 0:
       label="📥 Download Rekap Excel (.xlsx)",
       data=excel_data,
       file_name=(
-          f"rekap_penjualan_spg_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+          f"rekap_penjualan_{st.session_state['user_spg'].replace(' ', '_')}_"
+          f"{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
       ),
       mime=(
           "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
