@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from io import BytesIO
 import json
 import os
@@ -194,7 +194,7 @@ st.info(
 )
 
 # ====================================================
-# 3. PILIH KECAMATAN TUJUAN & WARKOP (UJI COBA BEBAS)
+# 3. PILIH KECAMATAN TUJUAN & WARKOP
 # ====================================================
 st.markdown("### 📋 Lokasi Kunjungan")
 kecamatan_pilihan = st.selectbox(
@@ -285,7 +285,6 @@ if nama_warkop_manual.strip() != "":
             "Longitude": user_lon,
         }
 
-        # Muat database lama, tambahkan data baru, dan simpan permanen ke file CSV
         df_all = load_database()
         df_new_row = pd.DataFrame([data_baru])
         df_all = pd.concat([df_all, df_new_row], ignore_index=True)
@@ -294,13 +293,13 @@ if nama_warkop_manual.strip() != "":
         st.balloons()
         st.success(
             f"🎉 Laporan konsumen **{nama_konsumen}** di"
-            f" **{nama_warkop_manual}** berhasil disimpan secara permanen!"
+            f" **{nama_warkop_manual}** berhasil disimpan!"
         )
 else:
   st.info("ℹ️ Silakan masukkan nama Warkop/LKK terlebih dahulu untuk membuka form.")
 
 # ====================================================
-# 5. LOG REKAP PENJUALAN KHUSUS USER YANG SEDANG LOGIN
+# 5. LOG REKAP PENJUALAN & MENU PENGELOLAAN / HAPUS LOG
 # ====================================================
 st.markdown("---")
 st.markdown(
@@ -308,24 +307,150 @@ st.markdown(
     f"{st.session_state['kota_kab']})"
 )
 
-# Muat seluruh data dari file
 df_master_all = load_database()
 
-# Filter data HANYA untuk user yang sedang aktif login saat ini
+# Filter data HANYA untuk user yang sedang aktif login
 if not df_master_all.empty and "Promotor" in df_master_all.columns:
   df_user_rekap = df_master_all[
       df_master_all["Promotor"] == st.session_state["user_spg"]
-  ]
+  ].copy()
 else:
   df_user_rekap = pd.DataFrame()
 
 if not df_user_rekap.empty:
-  st.dataframe(df_user_rekap, use_container_width=True)
+  # Konversi kolom waktu ke datetime untuk keperluan filter hapus per hari/minggu
+  df_user_rekap["Waktu_DT"] = pd.to_datetime(
+      df_user_rekap["Waktu"], errors="coerce"
+  )
 
-  # Tombol Download Excel khusus rekap user tersebut
+  # Tampilkan tabel rekap
+  st.dataframe(
+      df_user_rekap.drop(columns=["Waktu_DT"], errors="ignore"),
+      use_container_width=True,
+  )
+
+  # ==========================================
+  # MENU PENGATURAN / OPSI HAPUS LOG
+  # ==========================================
+  with st.expander("⚙️ Menu Pengaturan & Hapus Log"):
+    tab_row, tab_hari, tab_minggu, tab_all = st.tabs([
+        "Hapus per Row",
+        "Hapus per Hari",
+        "Hapus per Minggu",
+        "Hapus Semua (All)",
+    ])
+
+    # 1. HAPUS PER ROW (BERDASARKAN INDEKS / NAMA KONSUMEN & WAKTU)
+    with tab_row:
+      st.write("Pilih data spesifik yang ingin dihapus:")
+      # Buat label pilihan unik untuk setiap baris milik user
+      options_row = []
+      for idx, row in df_user_rekap.iterrows():
+        label = (
+            f"[{row['Waktu']}] {row['Nama_Konsumen']} - {row['Warkop_LKK']}"
+            f" ({row['Brand_Rokok']})"
+        )
+        options_row.append((idx, label))
+
+      selected_row_to_delete = st.selectbox(
+          "Pilih Data Baris",
+          options=options_row,
+          format_func=lambda x: x[1],
+          key="sel_row",
+      )
+
+      if st.button("🗑️ Hapus Baris Terpilih", type="secondary"):
+        if selected_row_to_delete:
+          original_idx = selected_row_to_delete[0]
+          # Hapus dari master global berdasarkan indeks asli
+          df_master_all = df_master_all.drop(original_idx).reset_index(
+              drop=True
+          )
+          save_database(df_master_all)
+          st.success("✅ Berhasil menghapus baris data terpilih!")
+          st.rerun()
+
+    # 2. HAPUS PER HARI
+    with tab_hari:
+      st.write("Pilih tanggal untuk menghapus semua log pada hari tersebut:")
+      # Ambil daftar tanggal unik dari data user
+      unique_dates = (
+          df_user_rekap["Waktu_DT"].dt.date.dropna().unique().tolist()
+      )
+      unique_dates = sorted(unique_dates, reverse=True)
+
+      if unique_dates:
+        selected_date = st.selectbox("Pilih Tanggal", options=unique_dates)
+        if st.button("🗑️ Hapus Log Tanggal Ini", type="secondary"):
+          # Filter baris master yang BUKAN milik user ini ATAU milik user ini tapi beda tanggal
+          mask_user_other_date = ~(
+              (df_master_all["Promotor"] == st.session_state["user_spg"])
+              & (
+                  pd.to_datetime(
+                      df_master_all["Waktu"], errors="coerce"
+                  ).dt.date
+                  == selected_date
+              )
+          )
+          df_master_all = df_master_all[mask_user_other_date].reset_index(
+              drop=True
+          )
+          save_database(df_master_all)
+          st.success(
+              f"✅ Berhasil menghapus semua log untuk tanggal {selected_date}!"
+          )
+          st.rerun()
+      else:
+        st.info("Tidak ada data tanggal yang tersedia.")
+
+    # 3. HAPUS PER MINGGU (7 Hari ke belakang / pilihan minggu)
+    with tab_minggu:
+      st.write("Hapus log berdasarkan rentang 7 hari terakhir:")
+      if st.button("🗑️ Hapus Log 7 Hari Terakhir", type="secondary"):
+        cutoff_date = datetime.now() - timedelta(days=7)
+        mask_user_keep = ~(
+            (df_master_all["Promotor"] == st.session_state["user_spg"])
+            & (
+                pd.to_datetime(df_master_all["Waktu"], errors="coerce")
+                >= cutoff_date
+            )
+        )
+        df_master_all = df_master_all[mask_user_keep].reset_index(drop=True)
+        save_database(df_master_all)
+        st.success("✅ Berhasil menghapus log dalam 7 hari terakhir!")
+        st.rerun()
+
+    # 4. HAPUS SEMUA (ALL DATA) MILIK USER INI
+    with tab_all:
+      st.warning(
+          "⚠️ Perhatian: Tindakan ini akan menghapus **seluruh** riwayat log"
+          f" rekap penjualan atas nama {st.session_state['user_spg']} secara"
+          " permanen!"
+      )
+      confirm_delete_all = st.checkbox(
+          "Saya yakin ingin menghapus semua data saya"
+      )
+      if st.button(
+          "🗑️ Hapus Semua Data Saya (All)",
+          type="primary",
+          disabled=not confirm_delete_all,
+      ):
+        # Buang semua baris yang promotor-nya sama dengan user aktif
+        df_master_all = df_master_all[
+            df_master_all["Promotor"] != st.session_state["user_spg"]
+        ].reset_index(drop=True)
+        save_database(df_master_all)
+        st.success(
+            "✅ Seluruh data rekap penjualan Anda berhasil dihapus dari sistem!"
+        )
+        st.rerun()
+
+  # ==========================================
+  # TOMBOL DOWNLOAD EXCEL
+  # ==========================================
   output = BytesIO()
   with pd.ExcelWriter(output, engine="openpyxl") as writer:
-    df_user_rekap.to_excel(
+    df_user_rekap.drop(columns=["Waktu_DT"], errors="ignore").to_excel(
         writer, index=False, sheet_name="Rekap Penjualan SPG"
     )
   excel_data = output.getvalue()
