@@ -199,6 +199,12 @@ st.info(
 # 3. PILIH KECAMATAN TUJUAN & WARKOP
 # ====================================================
 st.markdown("### 📋 Lokasi Kunjungan")
+
+nama_SPG = st.text_input(
+    "Nama SPG (Entry Manual)",
+    placeholder="Contoh: Luna Maya",
+)
+
 kecamatan_pilihan = st.selectbox(
     f"Pilih Kecamatan Tujuan Kunjungan ({st.session_state['kota_kab']})",
     daftar_kecamatan if daftar_kecamatan else ["Kecamatan Umum"],
