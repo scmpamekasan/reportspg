@@ -1,4 +1,5 @@
 from datetime import datetime
+from io import BytesIO
 import json
 import geopandas as gpd
 import pandas as pd
@@ -16,6 +17,11 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+# ====================================================
+# INISIALISASI DATABASE SESSION STATE UNTUK REKAP
+# ====================================================
+if "laporan_list" not in st.session_state:
+  st.session_state["laporan_list"] = []
 
 # ====================================================
 # 1. AMBIL DATA MASTER WILAYAH DARI FILE LOKAL GITHUB
@@ -34,7 +40,6 @@ def load_master_wilayah():
 
 gdf_wilayah = load_master_wilayah()
 
-# Ambil daftar nama kecamatan untuk pilihan menu dropdown
 daftar_kecamatan = []
 if gdf_wilayah is not None and "nm_kecamatan" in gdf_wilayah.columns:
   daftar_kecamatan = sorted(gdf_wilayah["nm_kecamatan"].dropna().unique().tolist())
@@ -51,7 +56,6 @@ if loc is None:
   )
   st.stop()
 
-# Ekstrak koordinat asli dari perangkat SPG
 user_lat = float(loc["coords"]["latitude"])
 user_lon = float(loc["coords"]["longitude"])
 akurasi_meter = round(float(loc["coords"].get("accuracy", 0)), 1)
@@ -59,7 +63,7 @@ akurasi_meter = round(float(loc["coords"].get("accuracy", 0)), 1)
 # ====================================================
 # 3. DETEKSI POSISI SPG SAAT INI (KECAMATAN & KOORDINAT)
 # ====================================================
-titik_spg = Point(user_lon, user_lat)  # Format GeoJSON: (Longitude, Latitude)
+titik_spg = Point(user_lon, user_lat)
 kecamatan_saat_ini = "Di luar wilayah Surabaya Barat"
 
 if gdf_wilayah is not None:
@@ -69,10 +73,10 @@ if gdf_wilayah is not None:
       kecamatan_saat_ini = row.get("nm_kecamatan", "Tidak diketahui")
       break
 
-# Tampilkan informasi live koordinat & posisi SPG di antarmuka
 st.info(
     f"📍 **Status GPS Anda:**\n\n"
-    f"- **Koordinat:** Lat: `{user_lat:.6f}`, Lon: `{user_lon:.6f}` (Akurasi: ±{akurasi_meter}m)\n"
+    f"- **Koordinat:** Lat: `{user_lat:.6f}`, Lon: `{user_lon:.6f}` (Akurasi:"
+    f" ±{akurasi_meter}m)\n"
     f"- **Posisi Kecamatan Saat Ini:** **{kecamatan_saat_ini}**"
 )
 
@@ -85,7 +89,6 @@ nama_spg = st.selectbox(
     ["Arif Yuliadi", "Nur Muhammad Khoirul Firmansyah"],
 )
 
-# Menu Pilih Kecamatan tujuan
 kecamatan_pilihan = st.selectbox(
     "Pilih Kecamatan Tujuan Kunjungan",
     daftar_kecamatan if daftar_kecamatan else ["Memuat data..."],
@@ -136,7 +139,6 @@ if lokasi_sah and nama_warkop_manual.strip() != "":
 
     st.write(f"**Warkop/LKK:** {nama_warkop_manual}")
 
-    # Field Form Sesuai Permintaan
     brand_entry = st.selectbox(
         "Brand Rokok",
         [
@@ -147,22 +149,24 @@ if lokasi_sah and nama_warkop_manual.strip() != "":
             "Djarum 76 Aksara",
         ],
     )
-    
-    nama_konsumen = st.text_input("Nama Konsumen", placeholder="Masukkan nama konsumen")
-    
+
+    nama_konsumen = st.text_input(
+        "Nama Konsumen", placeholder="Masukkan nama konsumen"
+    )
     gender_entry = st.radio("Gender", ["L", "P"], horizontal=True)
-    
-    usia_entry = st.number_input("Usia", min_value=17, max_value=100, step=1, value=25)
-    
+    usia_entry = st.number_input(
+        "Usia", min_value=17, max_value=100, step=1, value=25
+    )
     nohp_entry = st.text_input("No HP", placeholder="Contoh: 081234567890")
-    
-    # Instagram dengan awalan '@' otomatis di entiannya
+
     instagram_input = st.text_input("Instagram", placeholder="username_ig")
-    instagram_entry = f"@{instagram_input.strip().lstrip('@')}" if instagram_input.strip() else ""
-    
-    jumlah_bungkus = st.number_input("Jumlah Bungkus", min_value=1, step=1, value=1)
-    
-    rokok_asal_bumo = st.text_input("Rokok Asal (BUMO)", placeholder="Merk rokok yang biasa dikonsumsi sebelumnya")
+    jumlah_bungkus = st.number_input(
+        "Jumlah Bungkus", min_value=1, step=1, value=1
+    )
+    rokok_asal_bumo = st.text_input(
+        "Rokok Asal (BUMO)",
+        placeholder="Merk rokok yang biasa dikonsumsi sebelumnya",
+    )
 
     btn_kirim = st.form_submit_button(
         "🚀 Kirim Laporan ke Database", type="primary"
@@ -174,14 +178,69 @@ if lokasi_sah and nama_warkop_manual.strip() != "":
       elif not nama_konsumen.strip():
         st.warning("Mohon isi nama konsumen.")
       else:
+        # Format Instagram otomatis dengan '@'
+        ig_formatted = (
+            f"@{instagram_input.strip().lstrip('@')}"
+            if instagram_input.strip()
+            else "-"
+        )
+
+        data_baru = {
+            "Waktu": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "Promotor": nama_spg,
+            "Kecamatan": kecamatan_pilihan,
+            "Warkop_LKK": nama_warkop_manual,
+            "Brand_Rokok": brand_entry,
+            "Nama_Konsumen": nama_konsumen,
+            "Gender": gender_entry,
+            "Usia": usia_entry,
+            "No_HP": nohp_entry,
+            "Instagram": ig_formatted,
+            "Jumlah_Bungkus": jumlah_bungkus,
+            "Rokok_Asal_BUMO": rokok_asal_bumo,
+            "Latitude": user_lat,
+            "Longitude": user_lon,
+        }
+
+        st.session_state["laporan_list"].append(data_baru)
         st.balloons()
         st.success(
-            f"🎉 Laporan konsumen **{nama_konsumen}** di **{nama_warkop_manual}** "
-            f"(Kecamatan {kecamatan_pilihan}) oleh **{nama_spg}** berhasil disimpan!\n\n"
-            f"**Instagram tercatat:** {instagram_entry}"
+            f"🎉 Laporan konsumen **{nama_konsumen}** di"
+            f" **{nama_warkop_manual}** berhasil disimpan!"
         )
+
 else:
   if not lokasi_sah and gdf_wilayah is not None:
     st.error(pesan_validasi)
   elif nama_warkop_manual.strip() == "":
     st.info("ℹ️ Silakan masukkan nama Warkop/LKK terlebih dahulu.")
+
+# ====================================================
+# 7. LOG REKAP PENJUALAN & MENU DOWNLOAD EXCEL
+# ====================================================
+st.markdown("---")
+st.markdown("### 📊 Log Rekap Penjualan Lapangan")
+
+if len(st.session_state["laporan_list"]) > 0:
+  df_rekap = pd.DataFrame(st.session_state["laporan_list"])
+  st.dataframe(df_rekap, use_container_width=True)
+
+  # Menyiapkan file Excel (.xlsx) di memori menggunakan openpyxl
+  output = BytesIO()
+  with pd.ExcelWriter(output, engine="openpyxl") as writer:
+    df_rekap.to_excel(writer, index=False, sheet_name="Rekap Penjualan SPG")
+  excel_data = output.getvalue()
+
+  st.download_button(
+      label="📥 Download Rekap Excel (.xlsx)",
+      data=excel_data,
+      file_name=(
+          f"rekap_penjualan_spg_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+      ),
+      mime=(
+          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      ),
+      type="primary",
+  )
+else:
+  st.info("Belum ada data laporan yang dikirim pada sesi ini.")
