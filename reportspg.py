@@ -87,7 +87,27 @@ user_lat = st.session_state["user_lat"]
 user_lon = st.session_state["user_lon"]
 
 # ====================================================
-# 3. IDENTIFIKASI TUGAS & PILIH KECAMATAN
+# 3. DETEKSI POSISI SPG SAAT INI (KECAMATAN & KOORDINAT)
+# ====================================================
+titik_spg = Point(user_lon, user_lat)  # Format GeoJSON: (Longitude, Latitude)
+kecamatan_saat_ini = "Di luar wilayah Surabaya Barat"
+
+if gdf_wilayah is not None:
+  for _, row in gdf_wilayah.iterrows():
+    geom = row["geometry"]
+    if geom and geom.contains(titik_spg):
+      kecamatan_saat_ini = row.get("nm_kecamatan", "Tidak diketahui")
+      break
+
+# Tampilkan informasi live koordinat & posisi SPG di antarmuka
+st.info(
+    f"📍 **Status GPS Anda:**\n\n"
+    f"- **Koordinat:** Lat: `{user_lat:.6f}`, Lon: `{user_lon:.6f}`\n"
+    f"- **Posisi Kecamatan Saat Ini:** **{kecamatan_saat_ini}**"
+)
+
+# ====================================================
+# 4. IDENTIFIKASI TUGAS & PILIH KECAMATAN TUJUAN
 # ====================================================
 st.markdown("### 👤 Identifikasi Tugas & Lokasi")
 nama_spg = st.selectbox(
@@ -107,14 +127,12 @@ nama_warkop_manual = st.text_input(
 )
 
 # ====================================================
-# 4. VALIDASI SPATIAL BERDASARKAN KECAMATAN YANG DIPILIH
+# 5. VALIDASI SPATIAL BERDASARKAN KECAMATAN YANG DIPILIH
 # ====================================================
 lokasi_sah = False
 pesan_validasi = ""
 
 if gdf_wilayah is not None and kecamatan_pilihan:
-  titik_spg = Point(user_lon, user_lat)  # Format GeoJSON: (Longitude, Latitude)
-
   # Cari poligon kecamatan yang dipilih oleh pengguna
   row_kecamatan = gdf_wilayah[
       gdf_wilayah["nm_kecamatan"] == kecamatan_pilihan
@@ -126,7 +144,8 @@ if gdf_wilayah is not None and kecamatan_pilihan:
       lokasi_sah = True
     else:
       pesan_validasi = (
-          f"❌ Anda belum berada di dalam wilayah **Kecamatan {kecamatan_pilihan}**!"
+          f"❌ Posisi Anda saat ini berada di **Kecamatan {kecamatan_saat_ini}**,"
+          f" sedangkan target kunjungan adalah **Kecamatan {kecamatan_pilihan}**."
           " Harap menuju lokasi target kecamatan tersebut untuk membuka form"
           " laporan."
       )
@@ -134,7 +153,7 @@ if gdf_wilayah is not None and kecamatan_pilihan:
     pesan_validasi = "❌ Kecamatan yang dipilih tidak ditemukan pada data master."
 
 # ====================================================
-# 5. FORM LAPORAN (Hanya Terbuka Jika Berada di Kecamatan yang Dipilih)
+# 6. FORM LAPORAN (Hanya Terbuka Jika Berada di Kecamatan yang Dipilih)
 # ====================================================
 if lokasi_sah and nama_warkop_manual.strip() != "":
   st.success(
