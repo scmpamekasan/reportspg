@@ -15,8 +15,28 @@ st.set_page_config(
     page_title="Laporan SPG Mobile", page_icon="📍", layout="centered"
 )
 
-# File database lokal agar data persisten (tidak hilang saat refresh/tutup page)
+# File database lokal agar data persisten
 DB_FILE = "rekap_laporan_spg.csv"
+
+EXPECTED_COLUMNS = [
+    "Waktu",
+    "Promotor",
+    "Nama_SPG",
+    "Kota_Kab",
+    "Plat_Kendaraan",
+    "Kecamatan",
+    "Warkop_LKK",
+    "Brand_Rokok",
+    "Nama_Konsumen",
+    "Gender",
+    "Usia",
+    "No_HP",
+    "Instagram",
+    "Jumlah_Bungkus",
+    "Rokok_Asal_BUMO",
+    "Latitude",
+    "Longitude",
+]
 
 
 # ====================================================
@@ -25,29 +45,15 @@ DB_FILE = "rekap_laporan_spg.csv"
 def load_database():
   if os.path.exists(DB_FILE):
     try:
-      return pd.read_csv(DB_FILE)
+      df = pd.read_csv(DB_FILE)
+      # Pastikan semua kolom standar ada (mengatasi file CSV versi lama)
+      for col in EXPECTED_COLUMNS:
+        if col not in df.columns:
+          df[col] = "-"
+      return df[EXPECTED_COLUMNS]
     except Exception:
-      return pd.DataFrame()
-  return pd.DataFrame(
-      columns=[
-          "Waktu",
-          "Promotor",
-          "Kota_Kab",
-          "Plat_Kendaraan",
-          "Kecamatan",
-          "Warkop_LKK",
-          "Brand_Rokok",
-          "Nama_Konsumen",
-          "Gender",
-          "Usia",
-          "No_HP",
-          "Instagram",
-          "Jumlah_Bungkus",
-          "Rokok_Asal_BUMO",
-          "Latitude",
-          "Longitude",
-      ]
-  )
+      return pd.DataFrame(columns=EXPECTED_COLUMNS)
+  return pd.DataFrame(columns=EXPECTED_COLUMNS)
 
 
 def save_database(df):
@@ -92,7 +98,7 @@ if not st.session_state["logged_in"]:
 
     if btn_login:
       spg_num = pilihan_user.replace("Team SPG ", "")
-      expected_password = f"spg{spg_num}"  # Contoh: Team SPG 1 passwordnya 'spg1'
+      expected_password = f"spg{spg_num}"
 
       if password_input == expected_password or password_input == "spg123":
         if not plat_input.strip():
@@ -196,13 +202,13 @@ st.info(
 )
 
 # ====================================================
-# 3. PILIH KECAMATAN TUJUAN & WARKOP
+# 3. IDENTIFIKASI SPG & LOKASI KUNJUNGAN
 # ====================================================
 st.markdown("### 📋 Lokasi Kunjungan")
 
-nama_SPG = st.text_input(
+nama_spg_manual = st.text_input(
     "Nama SPG (Entry Manual)",
-    placeholder="Contoh: Luna Maya",
+    placeholder="Contoh: Nanda",
 )
 
 kecamatan_pilihan = st.selectbox(
@@ -218,9 +224,10 @@ nama_warkop_manual = st.text_input(
 # ====================================================
 # 4. FORM LAPORAN KONSUMEN
 # ====================================================
-if nama_warkop_manual.strip() != "":
+if nama_spg_manual.strip() != "" and nama_warkop_manual.strip() != "":
   st.success(
-      f"✅ Form laporan di **Kecamatan {kecamatan_pilihan}** siap diisi."
+      f"✅ Form laporan untuk **{nama_spg_manual.strip()}** di **Kecamatan"
+      f" {kecamatan_pilihan}** siap diisi."
   )
 
   st.markdown("---")
@@ -228,8 +235,8 @@ if nama_warkop_manual.strip() != "":
     st.markdown("### 📝 Form Input Laporan Konsumen")
 
     st.write(
-        f"**User:** {st.session_state['user_spg']} |"
-        f" **Warkop/LKK:** {nama_warkop_manual}"
+        f"**User:** {st.session_state['user_spg']} | **SPG:**"
+        f" {nama_spg_manual.strip()} | **Warkop/LKK:** {nama_warkop_manual}"
     )
 
     brand_entry = st.selectbox(
@@ -266,9 +273,7 @@ if nama_warkop_manual.strip() != "":
     )
 
     if btn_kirim:
-      if not nama_warkop_manual.strip():
-        st.warning("Mohon isi nama Warkop/LKK terlebih dahulu.")
-      elif not nama_konsumen.strip():
+      if not nama_konsumen.strip():
         st.warning("Mohon isi nama konsumen.")
       else:
         ig_formatted = (
@@ -280,18 +285,19 @@ if nama_warkop_manual.strip() != "":
         data_baru = {
             "Waktu": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "Promotor": st.session_state["user_spg"],
+            "Nama_SPG": nama_spg_manual.strip(),
             "Kota_Kab": st.session_state["kota_kab"],
             "Plat_Kendaraan": st.session_state["plat_kendaraan"],
             "Kecamatan": kecamatan_pilihan,
-            "Warkop_LKK": nama_warkop_manual,
+            "Warkop_LKK": nama_warkop_manual.strip(),
             "Brand_Rokok": brand_entry,
-            "Nama_Konsumen": nama_konsumen,
+            "Nama_Konsumen": nama_konsumen.strip(),
             "Gender": gender_entry,
             "Usia": usia_entry,
-            "No_HP": nohp_entry,
+            "No_HP": nohp_entry.strip(),
             "Instagram": ig_formatted,
             "Jumlah_Bungkus": jumlah_bungkus,
-            "Rokok_Asal_BUMO": rokok_asal_bumo,
+            "Rokok_Asal_BUMO": rokok_asal_bumo.strip(),
             "Latitude": user_lat,
             "Longitude": user_lon,
         }
@@ -304,10 +310,14 @@ if nama_warkop_manual.strip() != "":
         st.balloons()
         st.success(
             f"🎉 Laporan konsumen **{nama_konsumen}** oleh"
-            f" **{st.session_state['user_spg']}** berhasil disimpan!"
+            f" **{nama_spg_manual.strip()}** ({st.session_state['user_spg']})"
+            " berhasil disimpan!"
         )
 else:
-  st.info("ℹ️ Silakan masukkan nama Warkop/LKK terlebih dahulu untuk membuka form.")
+  st.info(
+      "ℹ️ Silakan masukkan **Nama SPG** dan **Nama Warkop/LKK** terlebih"
+      " dahulu untuk membuka form."
+  )
 
 # ====================================================
 # 5. EVALUASI HARIAN & LOG REKAP (KHUSUS USER AKTIF)
@@ -332,6 +342,7 @@ if not df_user_rekap.empty:
   df_user_rekap["Tanggal"] = pd.to_datetime(
       df_user_rekap["Waktu"], errors="coerce"
   ).dt.date
+  df_user_rekap["Nama_SPG"] = df_user_rekap["Nama_SPG"].fillna("-")
 
   # ----------------------------------------------------
   # TABEL EVALUASI HARIAN
@@ -339,24 +350,14 @@ if not df_user_rekap.empty:
   st.markdown("#### 📋 Tabel Evaluasi Harian")
 
   df_eval = (
-      df_user_rekap.groupby(["Tanggal", "Promotor","Nama_SPG", "Brand_Rokok"])
+      df_user_rekap.groupby(["Tanggal", "Promotor", "Nama_SPG", "Brand_Rokok"])
       .agg(
-          Jumlah_Titik_Warkop=(
-              "Warkop_LKK",
-              lambda x: x.nunique(),
-          ),  # Single count titik warkop
-          Konsumen_Beli=(
-              "Nama_Konsumen",
-              "count",
-          ),  # Jumlah dari konsumen yang beli
-          Jumlah_Omset=(
-              "Jumlah_Bungkus",
-              "sum",
-          ),  # Jumlah rokok yang terjual
+          Jumlah_Titik_Warkop=("Warkop_LKK", lambda x: x.nunique()),
+          Konsumen_Beli=("Nama_Konsumen", "count"),
+          Jumlah_Omset=("Jumlah_Bungkus", "sum"),
       )
       .reset_index()
   )
-
 
   def tentukan_status(row):
     if row["Brand_Rokok"] == "Black Matcha K12":
@@ -367,9 +368,7 @@ if not df_user_rekap.empty:
     else:
       return "Achieved"
 
-
   df_eval["Status_Target"] = df_eval.apply(tentukan_status, axis=1)
-
 
   def style_eval(val):
     if val == "Not Achieved":
@@ -377,7 +376,6 @@ if not df_user_rekap.empty:
     elif val == "Achieved":
       return "color: green; font-weight: bold;"
     return ""
-
 
   st.dataframe(
       df_eval.style.map(style_eval, subset=["Status_Target"]),
@@ -407,8 +405,8 @@ if not df_user_rekap.empty:
       options_row = []
       for idx, row in df_user_rekap.iterrows():
         label = (
-            f"[{row['Waktu']}] {row['Nama_Konsumen']} - {row['Warkop_LKK']}"
-            f" ({row['Brand_Rokok']})"
+            f"[{row['Waktu']}] {row['Nama_SPG']} | {row['Nama_Konsumen']} -"
+            f" {row['Warkop_LKK']} ({row['Brand_Rokok']})"
         )
         options_row.append((idx, label))
 
