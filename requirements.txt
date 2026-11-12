@@ -1,8 +1,5 @@
 streamlit
-streamlit-geolocation
 pandas
+geopandas
+shapely
 openpyxl
-requests
-pytz
-matplotlib
-pillow
