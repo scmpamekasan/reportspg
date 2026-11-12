@@ -1,6 +1,7 @@
 from datetime import datetime
 from io import BytesIO
 import json
+import os
 import geopandas as gpd
 import pandas as pd
 from shapely.geometry import Point
@@ -12,8 +13,47 @@ st.set_page_config(
     page_title="Laporan SPG Mobile", page_icon="📍", layout="centered"
 )
 
+# File database lokal agar data persisten (tidak hilang saat refresh/tutup page)
+DB_FILE = "rekap_laporan_spg.csv"
+
+
 # ====================================================
-# INISIALISASI SESSION STATE UNTUK LOGIN & REKAP
+# FUNGSI MANAJEMEN DATA PERSISTEN (CSV)
+# ====================================================
+def load_database():
+  if os.path.exists(DB_FILE):
+    try:
+      return pd.read_csv(DB_FILE)
+    except Exception:
+      return pd.DataFrame()
+  return pd.DataFrame(
+      columns=[
+          "Waktu",
+          "Promotor",
+          "Kota_Kab",
+          "Plat_Kendaraan",
+          "Kecamatan",
+          "Warkop_LKK",
+          "Brand_Rokok",
+          "Nama_Konsumen",
+          "Gender",
+          "Usia",
+          "No_HP",
+          "Instagram",
+          "Jumlah_Bungkus",
+          "Rokok_Asal_BUMO",
+          "Latitude",
+          "Longitude",
+      ]
+  )
+
+
+def save_database(df):
+  df.to_csv(DB_FILE, index=False)
+
+
+# ====================================================
+# INISIALISASI SESSION STATE UNTUK LOGIN
 # ====================================================
 if "logged_in" not in st.session_state:
   st.session_state["logged_in"] = False
@@ -23,8 +63,6 @@ if "kota_kab" not in st.session_state:
   st.session_state["kota_kab"] = ""
 if "plat_kendaraan" not in st.session_state:
   st.session_state["plat_kendaraan"] = ""
-if "laporan_list" not in st.session_state:
-  st.session_state["laporan_list"] = []
 
 # ====================================================
 # MENU LOGIN PERTAMA
@@ -118,7 +156,6 @@ gdf_wilayah = load_master_wilayah(st.session_state["kota_kab"])
 
 daftar_kecamatan = []
 if gdf_wilayah is not None:
-  # Cek berbagai variasi nama kolom untuk kecamatan
   col_kec = None
   for c in ["nm_kecamatan", "KECAMATAN", "kecamatan", "Name", "NAME"]:
     if c in gdf_wilayah.columns:
@@ -141,7 +178,6 @@ if loc is None:
       "⏳ Sedang mengunci titik GPS lokasi Anda... Pastikan izin lokasi"
       " (**Allow / Izinkan**) aktif pada browser Anda."
   )
-  # Untuk mode uji coba, jika loc gagal, berikan nilai default dummy agar tidak mandek
   user_lat = -7.2575
   user_lon = 112.7521
   akurasi_meter = 0.0
@@ -151,14 +187,14 @@ else:
   akurasi_meter = round(float(loc["coords"].get("accuracy", 0)), 1)
 
 st.info(
-    f"📍 **Status GPS Anda (Mode Uji Coba):**\n\n"
+    f"📍 **Status GPS Anda:**\n\n"
     f"- **Koordinat:** Lat: `{user_lat:.6f}`, Lon: `{user_lon:.6f}` (Akurasi:"
     f" ±{akurasi_meter}m)\n"
     f"- **Wilayah Sesi:** **{st.session_state['kota_kab']}**"
 )
 
 # ====================================================
-# 3. PILIH KECAMATAN TUJUAN & WARKOP (BEBAS DI BUKA)
+# 3. PILIH KECAMATAN TUJUAN & WARKOP (UJI COBA BEBAS)
 # ====================================================
 st.markdown("### 📋 Lokasi Kunjungan")
 kecamatan_pilihan = st.selectbox(
@@ -172,12 +208,11 @@ nama_warkop_manual = st.text_input(
 )
 
 # ====================================================
-# 4. FORM LAPORAN (DIBUKA LANGSUNG TANPA VALIDASI GPS)
+# 4. FORM LAPORAN KONSUMEN
 # ====================================================
 if nama_warkop_manual.strip() != "":
   st.success(
-      f"✅ Form laporan di **Kecamatan {kecamatan_pilihan}** siap diisi (Validasi"
-      " GPS dinonaktifkan sementara)."
+      f"✅ Form laporan di **Kecamatan {kecamatan_pilihan}** siap diisi."
   )
 
   st.markdown("---")
@@ -250,32 +285,53 @@ if nama_warkop_manual.strip() != "":
             "Longitude": user_lon,
         }
 
-        st.session_state["laporan_list"].append(data_baru)
+        # Muat database lama, tambahkan data baru, dan simpan permanen ke file CSV
+        df_all = load_database()
+        df_new_row = pd.DataFrame([data_baru])
+        df_all = pd.concat([df_all, df_new_row], ignore_index=True)
+        save_database(df_all)
+
         st.balloons()
         st.success(
             f"🎉 Laporan konsumen **{nama_konsumen}** di"
-            f" **{nama_warkop_manual}** berhasil disimpan!"
+            f" **{nama_warkop_manual}** berhasil disimpan secara permanen!"
         )
 else:
   st.info("ℹ️ Silakan masukkan nama Warkop/LKK terlebih dahulu untuk membuka form.")
 
 # ====================================================
-# 5. LOG REKAP PENJUALAN & MENU DOWNLOAD EXCEL
+# 5. LOG REKAP PENJUALAN KHUSUS USER YANG SEDANG LOGIN
 # ====================================================
 st.markdown("---")
-st.markdown("### 📊 Log Rekap Penjualan Lapangan")
+st.markdown(
+    f"### 📊 Log Rekap Penjualan: {st.session_state['user_spg']} ("
+    f"{st.session_state['kota_kab']})"
+)
 
-if len(st.session_state["laporan_list"]) > 0:
-  df_rekap = pd.DataFrame(st.session_state["laporan_list"])
-  st.dataframe(df_rekap, use_container_width=True)
+# Muat seluruh data dari file
+df_master_all = load_database()
 
+# Filter data HANYA untuk user yang sedang aktif login saat ini
+if not df_master_all.empty and "Promotor" in df_master_all.columns:
+  df_user_rekap = df_master_all[
+      df_master_all["Promotor"] == st.session_state["user_spg"]
+  ]
+else:
+  df_user_rekap = pd.DataFrame()
+
+if not df_user_rekap.empty:
+  st.dataframe(df_user_rekap, use_container_width=True)
+
+  # Tombol Download Excel khusus rekap user tersebut
   output = BytesIO()
   with pd.ExcelWriter(output, engine="openpyxl") as writer:
-    df_rekap.to_excel(writer, index=False, sheet_name="Rekap Penjualan SPG")
+    df_user_rekap.to_excel(
+        writer, index=False, sheet_name="Rekap Penjualan SPG"
+    )
   excel_data = output.getvalue()
 
   st.download_button(
-      label="📥 Download Rekap Excel (.xlsx)",
+      label=f"📥 Download Rekap Excel (.xlsx) - {st.session_state['user_spg']}",
       data=excel_data,
       file_name=(
           f"rekap_penjualan_{st.session_state['user_spg'].replace(' ', '_')}_"
@@ -288,4 +344,6 @@ if len(st.session_state["laporan_list"]) > 0:
       type="primary",
   )
 else:
-  st.info("Belum ada data laporan yang dikirim pada sesi ini.")
+  st.info(
+      f"Belum ada data laporan tersimpan untuk {st.session_state['user_spg']}."
+  )
