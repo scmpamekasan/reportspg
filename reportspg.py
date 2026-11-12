@@ -42,7 +42,6 @@ if gdf_wilayah is not None and "nm_kecamatan" in gdf_wilayah.columns:
 # ====================================================
 # 2. AMBIL KOORDINAT GPS OTOMATIS SAAT WEB DIBUKA
 # ====================================================
-# Memanggil GPS browser secara langsung dengan akurasi tinggi
 loc = get_geolocation()
 
 if loc is None:
@@ -128,17 +127,18 @@ if gdf_wilayah is not None and kecamatan_pilihan:
 if lokasi_sah and nama_warkop_manual.strip() != "":
   st.success(
       f"✅ Posisi terkonfirmasi berada di **Kecamatan {kecamatan_pilihan}**."
-      " Silakan isi laporan."
+      " Silakan isi laporan konsumen."
   )
 
   st.markdown("---")
   with st.form("form_laporan_spg"):
-    st.markdown("### 📝 Form Input Laporan Penjualan")
+    st.markdown("### 📝 Form Input Laporan Konsumen")
 
     st.write(f"**Warkop/LKK:** {nama_warkop_manual}")
 
+    # Field Form Sesuai Permintaan
     brand_entry = st.selectbox(
-        "Brand",
+        "Brand Rokok",
         [
             "D.Super 12",
             "D.76 Apel",
@@ -147,12 +147,22 @@ if lokasi_sah and nama_warkop_manual.strip() != "":
             "Djarum 76 Aksara",
         ],
     )
-    omset_entry = st.number_input(
-        "Omset (Bungkus)", min_value=0, step=1, value=0
-    )
-    jumlah_setoran_entry = st.number_input(
-        "Jumlah Setoran (Rp)", min_value=0, step=500, value=0
-    )
+    
+    nama_konsumen = st.text_input("Nama Konsumen", placeholder="Masukkan nama konsumen")
+    
+    gender_entry = st.radio("Gender", ["L", "P"], horizontal=True)
+    
+    usia_entry = st.number_input("Usia", min_value=17, max_value=100, step=1, value=25)
+    
+    nohp_entry = st.text_input("No HP", placeholder="Contoh: 081234567890")
+    
+    # Instagram dengan awalan '@' otomatis di entiannya
+    instagram_input = st.text_input("Instagram", placeholder="username_ig")
+    instagram_entry = f"@{instagram_input.strip().lstrip('@')}" if instagram_input.strip() else ""
+    
+    jumlah_bungkus = st.number_input("Jumlah Bungkus", min_value=1, step=1, value=1)
+    
+    rokok_asal_bumo = st.text_input("Rokok Asal (BUMO)", placeholder="Merk rokok yang biasa dikonsumsi sebelumnya")
 
     btn_kirim = st.form_submit_button(
         "🚀 Kirim Laporan ke Database", type="primary"
@@ -161,14 +171,18 @@ if lokasi_sah and nama_warkop_manual.strip() != "":
     if btn_kirim:
       if not nama_warkop_manual.strip():
         st.warning("Mohon isi nama Warkop/LKK terlebih dahulu.")
+      elif not nama_konsumen.strip():
+        st.warning("Mohon isi nama konsumen.")
       else:
         st.balloons()
         st.success(
-            f"🎉 Laporan untuk **{nama_warkop_manual}** (Kecamatan"
-            f" {kecamatan_pilihan}) oleh **{nama_spg}** berhasil disimpan!"
+            f"🎉 Laporan konsumen **{nama_konsumen}** di **{nama_warkop_manual}** "
+            f"(Kecamatan {kecamatan_pilihan}) oleh **{nama_spg}** berhasil disimpan!\n\n"
+            f"**Instagram tercatat:** {instagram_entry}"
         )
 else:
   if not lokasi_sah and gdf_wilayah is not None:
     st.error(pesan_validasi)
   elif nama_warkop_manual.strip() == "":
     st.info("ℹ️ Silakan masukkan nama Warkop/LKK terlebih dahulu.")
+```[cite: 5]
