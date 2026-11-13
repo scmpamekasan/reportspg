@@ -258,16 +258,12 @@ def save_master_team_brands(team_brands):
 
 
 def load_master_plat_kendaraan():
-  default_plats = {f"Team SPG {i}": f"L 1{i:02d} ABC" for i in range(1, 21)}
+  # Format dictionary fleksibel: { "Team SPG 1": "L 1234 ABC", "Team SPG 2": "L 5678 XYZ", ... }
+  default_plats = {f"Team SPG {i}": f"L {1000 + i} ABC" for i in range(1, 21)}
   if os.path.exists(MASTER_PLAT_FILE):
     try:
       with open(MASTER_PLAT_FILE, "r", encoding="utf-8") as f:
-        data = json.load(f)
-        for i in range(1, 21):
-          t_name = f"Team SPG {i}"
-          if t_name not in data:
-            data[t_name] = f"L 1{i:02d} ABC"
-        return data
+        return json.load(f)
     except Exception:
       return default_plats
   return default_plats
@@ -507,39 +503,48 @@ if not st.session_state["logged_in"]:
 # ====================================================
 if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
 
-  # --- TAMPILAN 0A: MASTER PLAT KENDARAAN ---
+  # --- TAMPILAN MASTER PLAT KENDARAAN (TAMBAH, EDIT, HAPUS) ---
   if st.session_state["admin_view"] == "Master_Plat":
     st.markdown("## 🚗 Master Data: Plat Nomor Kendaraan Operasional")
-    st.caption("Atur plat nomor kendaraan operasional untuk masing-masing Team SPG (Team 1 sampai 20).")
+    st.caption("Tambah, ubah, atau hapus daftar plat nomor kendaraan operasional per team.")
 
     plat_dict = load_master_plat_kendaraan()
-    selected_team_plat = st.selectbox(
-        "Pilih Team SPG untuk Pengaturan Plat Kendaraan",
-        options=[f"Team SPG {i}" for i in range(1, 21)]
-    )
 
-    current_plat_val = plat_dict.get(selected_team_plat, "L 1234 ABC")
+    # Form Tambah / Update Plat
+    with st.form("form_tambah_edit_plat"):
+      st.markdown("#### Tambah / Perbarui Plat Nomor Kendaraan")
+      target_team_plat = st.selectbox(
+          "Pilih Team",
+          options=[f"Team SPG {i}" for i in range(1, 21)]
+      )
+      input_plat_nomor = st.text_input("Plat Nomor Kendaraan", placeholder="Contoh: L 1234 ABC")
+      btn_save_plat_admin = st.form_submit_button("💾 Simpan Plat Kendaraan")
 
-    with st.form("form_config_plat"):
-      st.markdown(f"#### Plat Kendaraan untuk `{selected_team_plat}`")
-      new_plat_input = st.text_input("Plat Nomor Kendaraan", value=current_plat_val)
-      btn_save_plat = st.form_submit_button("💾 Simpan Plat Kendaraan")
-
-      if btn_save_plat:
-        plat_dict[selected_team_plat] = new_plat_input.strip()
-        save_master_plat_kendaraan(plat_dict)
-        st.success(f"✅ Plat kendaraan untuk **{selected_team_plat}** berhasil disimpan!")
-        st.rerun()
+      if btn_save_plat_admin:
+        if input_plat_nomor.strip():
+          plat_dict[target_team_plat] = input_plat_nomor.strip()
+          save_master_plat_kendaraan(plat_dict)
+          st.success(f"✅ Plat kendaraan untuk **{target_team_plat}** berhasil disimpan!")
+          st.rerun()
+        else:
+          st.warning("Mohon masukkan nomor plat kendaraan.")
 
     st.markdown("---")
-    st.markdown("#### 📋 Ringkasan Plat Kendaraan Seluruh Team (1 - 20)")
-    summary_plat_list = []
-    for i in range(1, 21):
-      t_name = f"Team SPG {i}"
-      p_val = plat_dict.get(t_name, "-")
-      summary_plat_list.append({"Team": t_name, "Plat Kendaraan": p_val})
+    st.markdown("#### 📋 Daftar Plat Kendaraan Terdaftar")
     
-    st.dataframe(pd.DataFrame(summary_plat_list), use_container_width=True)
+    # Menampilkan tabel dan opsi hapus per item
+    for team_key, plat_val in list(plat_dict.items()):
+      col_p1, col_p2, col_p3 = st.columns([0.4, 0.4, 0.2])
+      with col_p1:
+        st.write(f"**{team_key}**")
+      with col_p2:
+        st.write(f"`{plat_val}`")
+      with col_p3:
+        if st.button("🗑️ Hapus Plat", key=f"del_plat_{team_key}"):
+          plat_dict[team_key] = "-"  # Dikosongkan/dihapus
+          save_master_plat_kendaraan(plat_dict)
+          st.success(f"Plat kendaraan untuk {team_key} berhasil dikosongkan!")
+          st.rerun()
 
     st.markdown("---")
     if st.button("⬅️ Kembali ke Dashboard"):
@@ -942,7 +947,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
       st.session_state["admin_view"] = "Master_SPG"
       st.rerun()
   with col_m2:
-    if st.button("🚗 Master Plat Kendaraan\nAtur plat mobil operasional", use_container_width=True):
+    if st.button("🚗 Master Plat Kendaraan\nTambah, ubah, hapus plat", use_container_width=True):
       st.session_state["admin_view"] = "Master_Plat"
       st.rerun()
     if st.button("🚬 Merek Rokok & Target\nKelola daftar merek & target", use_container_width=True):
@@ -1167,7 +1172,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
   st.stop()
 
 # ====================================================
-# HALAMAN LOGIN UTAMA (MENGGUNAKAN CONTAINER, BEBAS DARI ST.FORM)
+# HALAMAN LOGIN UTAMA
 # ====================================================
 if not st.session_state["logged_in"]:
   _, col_center, _ = st.columns([0.02, 0.96, 0.02])
@@ -1209,9 +1214,9 @@ if not st.session_state["logged_in"]:
           on_change=reset_session_on_user_change,
       )
 
-      # Ambil plat nomor otomatis dari master plat berdasarkan pilihan user/team
+      # Ambil plat nomor otomatis dari master plat berdasarkan pilihan user/team (Bisa ditambah/dihapus admin)
       master_plat_dict = load_master_plat_kendaraan()
-      auto_plat_number = master_plat_dict.get(pilihan_user, "L 1234 ABC")
+      auto_plat_number = master_plat_dict.get(pilihan_user, "-")
 
       if st.session_state["login_mode"] == "Supervisi":
         st.info(f"🚗 Plat Nomor Mobil Operasional (dari Master Admin): **{auto_plat_number}**")
