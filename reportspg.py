@@ -209,7 +209,7 @@ def save_supervisi_database(df):
 
 
 # ====================================================
-# MANAJEMEN MASTER DATA & TEAM BRAND
+# MANAJEMEN MASTER DATA & PLAT KENDARAAN
 # ====================================================
 DEFAULT_BRANDS = [
     "D.Super 12",
@@ -219,6 +219,7 @@ DEFAULT_BRANDS = [
     "Djarum 76 Aksara",
 ]
 DEFAULT_SPGS = ["Nanda", "Dewi", "Aci", "Ayu"]
+DEFAULT_PLATS = ["L 1234 ABC", "L 5678 XYZ"]
 
 
 def load_master_brands():
@@ -258,24 +259,23 @@ def save_master_team_brands(team_brands):
 
 
 def load_master_plat_kendaraan():
-  default_plats = {f"Team SPG {i}": f"L 1{i:02d} ABC" for i in range(1, 21)}
+  # Master Plat tidak dikunci per team, berupa list fleksibel (tambah/hapus bebas oleh admin)
   if os.path.exists(MASTER_PLAT_FILE):
     try:
       with open(MASTER_PLAT_FILE, "r", encoding="utf-8") as f:
         data = json.load(f)
-        for i in range(1, 21):
-          t_name = f"Team SPG {i}"
-          if t_name not in data:
-            data[t_name] = f"L 1{i:02d} ABC"
-        return data
+        if isinstance(data, list):
+          return data
+        elif isinstance(data, dict):
+          return list(data.values())
     except Exception:
-      return default_plats
-  return default_plats
+      return DEFAULT_PLATS
+  return DEFAULT_PLATS
 
 
-def save_master_plat_kendaraan(plat_dict):
+def save_master_plat_kendaraan(plat_list):
   with open(MASTER_PLAT_FILE, "w", encoding="utf-8") as f:
-    json.dump(plat_dict, f, ensure_ascii=False, indent=2)
+    json.dump(plat_list, f, ensure_ascii=False, indent=2)
 
 
 def load_master_lokasi_excel():
@@ -412,7 +412,7 @@ def style_status_target(val):
 # ====================================================
 def reset_session_on_user_change():
   st.session_state["logged_in"] = False
-  st.session_state["user_spg"] = st.session_state["selected_team_login"]
+  st.session_state["user_spg"] = st.session_state.get("selected_team_login", "")
   st.session_state["draft_konsumen"] = ""
   st.session_state["draft_nohp"] = ""
   st.session_state["draft_ig"] = ""
@@ -507,45 +507,42 @@ if not st.session_state["logged_in"]:
 # ====================================================
 if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
 
-  # --- TAMPILAN MASTER PLAT KENDARAAN (TAMBAH, EDIT, HAPUS) ---
+  # --- TAMPILAN MASTER PLAT KENDARAAN (TAMBAH & HAPUS FLEKSIBEL) ---
   if st.session_state["admin_view"] == "Master_Plat":
     st.markdown("## 🚗 Master Data: Plat Nomor Kendaraan Operasional")
-    st.caption("Tambah, ubah, atau hapus daftar plat nomor kendaraan operasional per team.")
+    st.caption("Tambah atau hapus daftar plat nomor kendaraan operasional secara fleksibel.")
 
-    plat_dict = load_master_plat_kendaraan()
+    plat_list = load_master_plat_kendaraan()
 
-    with st.form("form_tambah_edit_plat"):
-      st.markdown("#### Tambah / Perbarui Plat Nomor Kendaraan")
-      target_team_plat = st.selectbox(
-          "Pilih Team",
-          options=[f"Team SPG {i}" for i in range(1, 21)]
-      )
-      input_plat_nomor = st.text_input("Plat Nomor Kendaraan", placeholder="Contoh: L 1234 ABC")
-      btn_save_plat_admin = st.form_submit_button("💾 Simpan Plat Kendaraan")
+    with st.form("form_tambah_plat"):
+      st.markdown("#### Tambah Plat Nomor Kendaraan Baru")
+      new_plat_input = st.text_input("Plat Nomor Kendaraan", placeholder="Contoh: L 1234 ABC")
+      btn_add_plat = st.form_submit_button("➕ Tambah Plat Kendaraan")
 
-      if btn_save_plat_admin:
-        if input_plat_nomor.strip():
-          plat_dict[target_team_plat] = input_plat_nomor.strip()
-          save_master_plat_kendaraan(plat_dict)
-          st.success(f"✅ Plat kendaraan untuk **{target_team_plat}** berhasil disimpan!")
-          st.rerun()
+      if btn_add_plat:
+        p_clean = new_plat_input.strip().upper()
+        if p_clean:
+          if p_clean not in plat_list:
+            plat_list.append(p_clean)
+            save_master_plat_kendaraan(plat_list)
+            st.success(f"✅ Plat kendaraan '{p_clean}' berhasil ditambahkan!")
+            st.rerun()
+          else:
+            st.warning("Plat nomor kendaraan tersebut sudah ada dalam daftar.")
         else:
-          st.warning("Mohon masukkan nomor plat kendaraan.")
+            st.warning("Mohon masukkan nomor plat kendaraan.")
 
     st.markdown("---")
     st.markdown("#### 📋 Daftar Plat Kendaraan Terdaftar")
-    
-    for team_key, plat_val in list(plat_dict.items()):
-      col_p1, col_p2, col_p3 = st.columns([0.4, 0.4, 0.2])
+    for idx, p in enumerate(plat_list):
+      col_p1, col_p2 = st.columns([0.8, 0.2])
       with col_p1:
-        st.write(f"**{team_key}**")
+        st.write(f"**{idx+1}.** `{p}`")
       with col_p2:
-        st.write(f"`{plat_val}`")
-      with col_p3:
-        if st.button("🗑️ Hapus Plat", key=f"del_plat_{team_key}"):
-          plat_dict[team_key] = "-"
-          save_master_plat_kendaraan(plat_dict)
-          st.success(f"Plat kendaraan untuk {team_key} berhasil dikosongkan!")
+        if st.button("🗑️ Hapus", key=f"del_plat_{idx}"):
+          plat_list.pop(idx)
+          save_master_plat_kendaraan(plat_list)
+          st.success("Plat kendaraan berhasil dihapus!")
           st.rerun()
 
     st.markdown("---")
@@ -600,7 +597,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
       st.rerun()
     st.stop()
 
-  # --- TAMPILAN MASTER DATA NAMA SPG ---
+  # --- TAMPILAN MASTER NAMA SPG ---
   elif st.session_state["admin_view"] == "Master_SPG":
     st.markdown("## 👩‍💼 Master Data: Nama SPG")
     st.caption("Tambah, ubah, atau hapus daftar nama SPG aktif.")
@@ -642,7 +639,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
       st.rerun()
     st.stop()
 
-  # --- TAMPILAN MASTER DATA MEREK ROKOK ---
+  # --- TAMPILAN MASTER MEREK ROKOK ---
   elif st.session_state["admin_view"] == "Master_Brand":
     st.markdown("## 🚬 Master Data: Merek Rokok & Target")
     st.caption("Kelola daftar merek rokok beserta aturan target omset per SPG dan Team.")
@@ -949,7 +946,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
       st.session_state["admin_view"] = "Master_SPG"
       st.rerun()
   with col_m2:
-    if st.button("🚗 Master Plat Kendaraan\nTambah, ubah, hapus plat", use_container_width=True):
+    if st.button("🚗 Master Plat Kendaraan\nTambah & hapus plat mobil", use_container_width=True):
       st.session_state["admin_view"] = "Master_Plat"
       st.rerun()
     if st.button("🚬 Merek Rokok & Target\nKelola daftar merek & target", use_container_width=True):
@@ -1174,7 +1171,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
   st.stop()
 
 # ====================================================
-# HALAMAN LOGIN UTAMA (MENGGUNAKAN NAMA TEAM)
+# HALAMAN LOGIN UTAMA (LOGIN SPG DENGAN NAMA TEAM, LOGIN SUPERVISI DENGAN PILIHAN TEAM & PLAT KENDARAAN)
 # ====================================================
 if not st.session_state["logged_in"]:
   _, col_center, _ = st.columns([0.02, 0.96, 0.02])
@@ -1191,7 +1188,7 @@ if not st.session_state["logged_in"]:
         unsafe_allow_html=True,
     )
 
-    st.markdown("#### 🚀 Pilih Mode Masuk & Nama Team")
+    st.markdown("#### 🚀 Pilih Mode Masuk & Identitas Operasional")
     
     col_btn_mode1, col_btn_mode2 = st.columns(2)
     with col_btn_mode1:
@@ -1216,12 +1213,17 @@ if not st.session_state["logged_in"]:
           on_change=reset_session_on_user_change,
       )
 
-      # Ambil plat nomor otomatis dari master plat berdasarkan pilihan nama team
-      master_plat_dict = load_master_plat_kendaraan()
-      auto_plat_number = master_plat_dict.get(pilihan_user, "-")
-
+      # Jika mode Supervisi, tampilkan juga opsi pilihan Plat Nomor Kendaraan secara fleksibel
+      pilihan_plat_supervisi = ""
       if st.session_state["login_mode"] == "Supervisi":
-        st.info(f"🚗 Plat Nomor Mobil (dari Master Admin untuk {pilihan_user}): **{auto_plat_number}**")
+        daftar_plat_master = load_master_plat_kendaraan()
+        if not daftar_plat_master:
+          daftar_plat_master = ["L 1234 ABC"]
+        pilihan_plat_supervisi = st.selectbox(
+            "🚗 Pilih Plat Nomor Kendaraan Operasional",
+            daftar_plat_master,
+            key="selected_plat_supervisi_login"
+        )
 
       has_schedule, schedule_warning_msg, auto_detected_kota = get_schedule_info_for_team(pilihan_user)
 
@@ -1239,7 +1241,7 @@ if not st.session_state["logged_in"]:
         else:
           st.session_state["logged_in"] = True
           st.session_state["user_spg"] = pilihan_user
-          st.session_state["plat_mobil"] = auto_plat_number if st.session_state["login_mode"] == "Supervisi" else "Pribadi/Motor"
+          st.session_state["plat_mobil"] = pilihan_plat_supervisi if st.session_state["login_mode"] == "Supervisi" else "Pribadi/Motor"
           st.session_state["kota_kab"] = auto_detected_kota
           st.rerun()
 
@@ -1267,7 +1269,7 @@ with col_banner:
       <div class="user-banner">
           <div class="user-banner-title">👤 {st.session_state['user_spg']} &nbsp;|&nbsp; <span style="font-size: 0.9rem; color: #38bdf8;">{mode_badge}</span></div>
           <div class="user-banner-sub">
-              🚗 Plat Mobil (Master Admin): <b>{st.session_state['plat_mobil']}</b> &nbsp;|&nbsp; 🏙️ Wilayah: <b>{st.session_state['kota_kab']}</b>
+              🚗 Plat Mobil: <b>{st.session_state['plat_mobil']}</b> &nbsp;|&nbsp; 🏙️ Wilayah: <b>{st.session_state['kota_kab']}</b>
           </div>
       </div>
       """,
@@ -1479,8 +1481,8 @@ st.markdown(
 # ====================================================
 if st.session_state["login_mode"] == "Supervisi":
   st.markdown("---")
-  st.markdown(f"### 👀 Dashboard Monitoring & Entry Supervisi: {st.session_state['user_spg']} (Plat Master: `{st.session_state['plat_mobil']}`)")
-  st.caption("Supervisor menginput jumlah kontak konsumen di warkop ini secara manual, sementara plat mobil ditarik otomatis dari master admin.")
+  st.markdown(f"### 👀 Dashboard Monitoring & Entry Supervisi: {st.session_state['user_spg']} (Plat Mobil: `{st.session_state['plat_mobil']}`)")
+  st.caption("Supervisor menginput jumlah kontak konsumen di warkop ini secara manual.")
 
   # Form Supervisi untuk Entry Manual Jumlah Kontak Konsumen
   with st.form("form_entry_kontak_supervisi"):
