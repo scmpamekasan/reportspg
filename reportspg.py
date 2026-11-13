@@ -506,7 +506,7 @@ if not st.session_state["logged_in"]:
         """
         <div class="login-header">
             <div style="font-size: 2.5rem; margin-bottom: 6px;">📍</div>
-            <h1>PORTAL LAPORAN SPG</h1>
+            <h1>PORTAL LAPORAN SPG AYU AGENCY</h1>
             <p>Sistem Pelaporan Lapangan &amp; Monitoring Geofencing</p>
         </div>
         """,
