@@ -1,4 +1,5 @@
-from datetime import datetime, timedelta
+from datetime import timedelta
+from zoneinfo import ZoneInfo
 from io import BytesIO
 import json
 import os
@@ -8,6 +9,31 @@ import pydeck as pdk
 from shapely.geometry import Point
 import streamlit as st
 from streamlit_js_eval import get_geolocation
+from pathlib import Path
+from app_config import (
+    DB_FILE,
+    DB_SUPERVISI_KONTAK_FILE,
+    EXPECTED_COLUMNS,
+    EXPECTED_SUPERVISI_COLUMNS,
+    JADWAL_SPG_FILE,
+    MASTER_BRAND_FILE,
+    MASTER_LOKASI_FILE,
+    MASTER_PLAT_FILE,
+    MASTER_SPG_FILE,
+    MASTER_TEAM_BRAND_FILE,
+)
+from data_store import (
+    load_database,
+    load_master_wilayah,
+    load_supervisi_database,
+    save_database,
+    save_supervisi_database,
+)
+from date_utils import (
+    add_custom_week_columns,
+    get_custom_week_info,
+    now_wib,
+)
 
 # ====================================================
 # KONFIGURASI HALAMAN STREAMLIT
@@ -164,6 +190,148 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+# ====================================================
+# Modul ini menyediakan satu sumber waktu WIB
+# ====================================================
+
+
+WIB = ZoneInfo("Asia/Jakarta")
+
+
+def now_wib():
+    """Mengembalikan waktu sekarang dalam zona waktu Asia/Jakarta."""
+    return pd.Timestamp.now(tz=WIB).to_pydatetime()
+
+
+def get_custom_week_info(value):
+    """
+    Mengembalikan label dan nomor minggu ISO.
+
+    Jumat digunakan sebagai hari acuan:
+    - Senin sampai Jumat masuk ke minggu Jumat pada minggu itu.
+    - Sabtu dan Minggu masuk ke minggu Jumat berikutnya.
+    """
+    if pd.isna(value):
+        return "-", "-"
+
+    date_value = pd.to_datetime(value).date()
+    weekday = date_value.weekday()
+
+    if weekday == 5:  # Sabtu
+        friday_date = date_value + timedelta(days=6)
+    elif weekday == 6:  # Minggu
+        friday_date = date_value + timedelta(days=5)
+    else:
+        friday_date = date_value + timedelta(days=4 - weekday)
+
+    iso_year, iso_week, _ = friday_date.isocalendar()
+
+    label = f"Minggu ke-{iso_week} ({iso_year})"
+    return label, iso_week
+
+
+def add_custom_week_columns(df, date_col="Waktu_Dt"):
+    """Menambahkan kolom Periode_Minggu ke DataFrame."""
+    if df.empty or date_col not in df.columns:
+        df["Periode_Minggu"] = "-"
+        return df
+
+    df["Periode_Minggu"] = df[date_col].apply(
+        lambda value: get_custom_week_info(value)[0]
+    )
+    return df
+
+# ====================================================
+# Modul ini menangani pembacaan/penyimpanan CSV dan pemuatan GeoJSON
+# ====================================================
+
+from app_config import (
+    BASE_DIR,
+    DB_FILE,
+    DB_SUPERVISI_KONTAK_FILE,
+    EXPECTED_COLUMNS,
+    EXPECTED_SUPERVISI_COLUMNS,
+)
+
+
+def load_database():
+    """Memuat database transaksi SPG."""
+    if not DB_FILE.exists():
+        return pd.DataFrame(columns=EXPECTED_COLUMNS)
+
+    try:
+        df = pd.read_csv(DB_FILE)
+
+        # Mendukung nama kolom lama.
+        if "Usia" in df.columns and "Range_Umur" not in df.columns:
+            df = df.rename(columns={"Usia": "Range_Umur"})
+
+        for col in EXPECTED_COLUMNS:
+            if col not in df.columns:
+                df[col] = "-"
+
+        return df[EXPECTED_COLUMNS]
+    except (OSError, pd.errors.ParserError, UnicodeDecodeError) as exc:
+        st.error(f"Gagal membaca database transaksi: {exc}")
+        return pd.DataFrame(columns=EXPECTED_COLUMNS)
+
+
+def save_database(df):
+    """Menyimpan database transaksi SPG."""
+    df.to_csv(DB_FILE, index=False)
+
+
+def load_supervisi_database():
+    """Memuat database kontak supervisi."""
+    if not DB_SUPERVISI_KONTAK_FILE.exists():
+        return pd.DataFrame(columns=EXPECTED_SUPERVISI_COLUMNS)
+
+    try:
+        df = pd.read_csv(DB_SUPERVISI_KONTAK_FILE)
+
+        for col in EXPECTED_SUPERVISI_COLUMNS:
+            if col not in df.columns:
+                df[col] = "-"
+
+        return df[EXPECTED_SUPERVISI_COLUMNS]
+    except (OSError, pd.errors.ParserError, UnicodeDecodeError) as exc:
+        st.error(f"Gagal membaca database kontak supervisi: {exc}")
+        return pd.DataFrame(columns=EXPECTED_SUPERVISI_COLUMNS)
+
+
+def save_supervisi_database(df):
+    """Menyimpan database kontak supervisi."""
+    df.to_csv(DB_SUPERVISI_KONTAK_FILE, index=False)
+
+
+@st.cache_data
+def load_master_wilayah(kota):
+    """Memuat GeoJSON batas wilayah berdasarkan nama kota."""
+    filename_by_city = {
+        "Surabaya": "Surabaya Barat.geojson",
+        "Gresik": "Gresik.geojson",
+    }
+    filename = filename_by_city.get(kota)
+
+    if filename is None:
+        return None
+
+    file_path = BASE_DIR / filename
+
+    try:
+        with file_path.open("r", encoding="utf-8") as file:
+            data = json.load(file)
+
+        gdf_master = gpd.GeoDataFrame.from_features(data)
+
+        if gdf_master.crs is None:
+            gdf_master = gdf_master.set_crs("EPSG:4326")
+
+        return gdf_master
+    except (OSError, json.JSONDecodeError, ValueError) as exc:
+        st.error(f"Gagal memuat file master wilayah '{filename}': {exc}")
+        return None
+        
 # File database lokal & master
 DB_FILE = "rekap_laporan_spg.csv"
 DB_SUPERVISI_KONTAK_FILE = "rekap_kontak_supervisi.csv"
