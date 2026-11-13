@@ -976,6 +976,8 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
   st.markdown("#### 🌐 Ringkasan Cepat Data Masuk (All User)")
 
   df_all_users = load_database()
+  df_all_supervisi = load_supervisi_database()
+
   if not df_all_users.empty:
     df_all_users["Waktu_Dt"] = pd.to_datetime(
         df_all_users["Waktu"], errors="coerce"
@@ -1041,11 +1043,275 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
         ),
         use_container_width=True,
     )
+  else:
+    st.info("Belum ada data laporan transaksi SPG masuk.")
 
+  # ====================================================
+  # REPORT REKAPITULASI COMBINE PER TITIK LKK (ADMIN)
+  # ====================================================
+  st.markdown("---")
+  st.markdown("#### 📊 Rekapitulasi Combine Per Titik LKK (All Team)")
+  st.caption("Gabungan data jumlah kontak manual Supervisi dan penjualan konsumen SPG per titik Warkop/LKK.")
+
+  if not df_all_supervisi.empty:
+    df_all_supervisi["Waktu_Dt"] = pd.to_datetime(
+        df_all_supervisi["Waktu"], errors="coerce"
+    )
+    df_all_supervisi["Tanggal"] = df_all_supervisi["Waktu_Dt"].dt.date
+    df_all_supervisi["Jumlah_Kontak_Manual"] = pd.to_numeric(
+        df_all_supervisi["Jumlah_Kontak_Manual"], errors="coerce"
+    ).fillna(0).astype(int)
+
+  # Filter Team untuk Rekapitulasi Combine
+  teams_spg = df_all_users["Promotor"].dropna().unique().tolist() if not df_all_users.empty else []
+  teams_sup = df_all_supervisi["Promotor"].dropna().unique().tolist() if not df_all_supervisi.empty else []
+  all_teams_lkk = ["Semua Team"] + sorted(list(set(teams_spg + teams_sup)))
+
+  filter_team_lkk = st.selectbox(
+      "Filter Team pada Rekapitulasi Combine LKK:",
+      options=all_teams_lkk,
+      key="admin_filter_team_lkk"
+  )
+
+  df_spg_lkk_filtered = df_all_users.copy()
+  df_sup_lkk_filtered = df_all_supervisi.copy()
+
+  if filter_team_lkk != "Semua Team":
+    if not df_spg_lkk_filtered.empty:
+      df_spg_lkk_filtered = df_spg_lkk_filtered[df_spg_lkk_filtered["Promotor"] == filter_team_lkk]
+    if not df_sup_lkk_filtered.empty:
+      df_sup_lkk_filtered = df_sup_lkk_filtered[df_sup_lkk_filtered["Promotor"] == filter_team_lkk]
+
+  df_rekap_spg_admin = pd.DataFrame(
+      columns=["Promotor", "Kota_Kab", "Kecamatan", "Warkop_LKK", "Alamat_Warkop", "SPG_Bertugas", "Konsumen_Beli", "Total_Omset_Bungkus"]
+  )
+  if not df_spg_lkk_filtered.empty:
+    df_rekap_spg_admin = (
+        df_spg_lkk_filtered.groupby(["Promotor", "Kota_Kab", "Kecamatan", "Warkop_LKK", "Alamat_Warkop"])
+        .agg(
+            SPG_Bertugas=("Nama_SPG", lambda x: ", ".join(x.dropna().unique())),
+            Konsumen_Beli=("Nama_Konsumen", "count"),
+            Total_Omset_Bungkus=("Jumlah_Bungkus", "sum")
+        )
+        .reset_index()
+    )
+
+  df_rekap_sup_admin = pd.DataFrame(
+      columns=["Promotor", "Kota_Kab", "Kecamatan", "Warkop_LKK", "Plat_Mobil_Supervisi", "Jumlah_Kontak_Manual"]
+  )
+  if not df_sup_lkk_filtered.empty:
+    df_rekap_sup_admin = (
+        df_sup_lkk_filtered.groupby(["Promotor", "Kota_Kab", "Kecamatan", "Warkop_LKK"])
+        .agg(
+            Plat_Mobil_Supervisi=("Plat_Mobil", lambda x: ", ".join([str(v) for v in x.dropna().unique() if str(v) != "-"])),
+            Jumlah_Kontak_Manual=("Jumlah_Kontak_Manual", "sum")
+        )
+        .reset_index()
+    )
+
+  if not df_rekap_spg_admin.empty or not df_rekap_sup_admin.empty:
+    if df_rekap_spg_admin.empty:
+      df_combine_admin = df_rekap_sup_admin.copy()
+      df_combine_admin["Alamat_Warkop"] = "-"
+      df_combine_admin["SPG_Bertugas"] = "-"
+      df_combine_admin["Konsumen_Beli"] = 0
+      df_combine_admin["Total_Omset_Bungkus"] = 0
+    elif df_rekap_sup_admin.empty:
+      df_combine_admin = df_rekap_spg_admin.copy()
+      df_combine_admin["Plat_Mobil_Supervisi"] = "-"
+      df_combine_admin["Jumlah_Kontak_Manual"] = 0
+    else:
+      df_combine_admin = pd.merge(
+          df_rekap_spg_admin,
+          df_rekap_sup_admin,
+          on=["Promotor", "Kota_Kab", "Kecamatan", "Warkop_LKK"],
+          how="outer"
+      ).fillna({
+          "Alamat_Warkop": "-",
+          "SPG_Bertugas": "-",
+          "Plat_Mobil_Supervisi": "-",
+          "Jumlah_Kontak_Manual": 0,
+          "Konsumen_Beli": 0,
+          "Total_Omset_Bungkus": 0,
+      })
+
+    df_combine_admin["Plat_Mobil_Supervisi"] = df_combine_admin["Plat_Mobil_Supervisi"].replace("", "-")
+    df_combine_admin["Jumlah_Kontak_Manual"] = df_combine_admin["Jumlah_Kontak_Manual"].astype(int)
+    df_combine_admin["Konsumen_Beli"] = df_combine_admin["Konsumen_Beli"].astype(int)
+    df_combine_admin["Total_Omset_Bungkus"] = df_combine_admin["Total_Omset_Bungkus"].astype(int)
+
+    cols_combine_order = [
+        "Promotor",
+        "Plat_Mobil_Supervisi",
+        "Kota_Kab",
+        "Kecamatan",
+        "Warkop_LKK",
+        "Alamat_Warkop",
+        "SPG_Bertugas",
+        "Jumlah_Kontak_Manual",
+        "Konsumen_Beli",
+        "Total_Omset_Bungkus",
+    ]
+    df_combine_admin = df_combine_admin[cols_combine_order].sort_values(
+        by=["Total_Omset_Bungkus", "Jumlah_Kontak_Manual"], ascending=False
+    )
+
+    st.dataframe(df_combine_admin, use_container_width=True)
+
+    # Tombol Export Excel Rekap Combine LKK
+    output_lkk = BytesIO()
+    with pd.ExcelWriter(output_lkk, engine="openpyxl") as writer:
+      df_combine_admin.to_excel(writer, index=False, sheet_name="Rekap Combine LKK")
+      if not df_all_supervisi.empty:
+        df_all_supervisi.drop(columns=["Waktu_Dt", "Tanggal"], errors="ignore").to_excel(
+            writer, index=False, sheet_name="Log Kontak Supervisi"
+        )
+
+    st.download_button(
+        label="📥 Download Rekapitulasi Combine Per Titik LKK (.xlsx)",
+        data=output_lkk.getvalue(),
+        file_name=f"rekap_combine_lkk_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        key="btn_dl_combine_lkk_admin",
+    )
+  else:
+    st.info("Belum ada data rekapitulasi gabungan LKK yang tersedia.")
+
+  # ====================================================
+  # MENU HAPUS DATA KONTAK SUPERVISI (REKAP LKK)
+  # ====================================================
+  with st.expander("🗑️ Menu Hapus Data Kontak Supervisi / Rekap LKK (Per Row / Hari / Minggu / All Data)", expanded=False):
+    if not df_all_supervisi.empty:
+      st.warning("⚠️ Perhatian: Menghapus log kontak Supervisi akan memengaruhi angka 'Jumlah_Kontak_Manual' pada tabel Rekapitulasi Combine Per Titik LKK di atas.")
+      tab_sup_row, tab_sup_day, tab_sup_week, tab_sup_all = st.tabs([
+          "🔹 Hapus per Row",
+          "📅 Hapus per Hari",
+          "📆 Hapus per Minggu",
+          "🚨 Hapus All Data"
+      ])
+
+      with tab_sup_row:
+        df_sup_indexed = df_all_supervisi.reset_index()
+        opsi_sup_rows = [
+            f"ID #{row['index']} | {row['Waktu']} | {row['Promotor']} ({row['Plat_Mobil']}) - {row['Warkop_LKK']} ({row['Kecamatan']}): {int(row['Jumlah_Kontak_Manual'])} kontak"
+            for _, row in df_sup_indexed.sort_values(by="Waktu", ascending=False).iterrows()
+        ]
+        selected_sup_rows = st.multiselect(
+            "Pilih baris log kontak Supervisi yang akan dihapus:",
+            options=opsi_sup_rows,
+            key="ms_del_sup_rows"
+        )
+        if st.button("🗑️ Hapus Baris Kontak Terpilih", type="primary", key="btn_del_sup_row"):
+          if selected_sup_rows:
+            indices_sup_drop = [
+                int(item.split(" | ")[0].replace("ID #", ""))
+                for item in selected_sup_rows
+            ]
+            df_sup_clean = df_all_supervisi.drop(index=indices_sup_drop).drop(
+                columns=["Waktu_Dt", "Tanggal"], errors="ignore"
+            )
+            save_supervisi_database(df_sup_clean)
+            st.success(f"✅ Berhasil menghapus {len(indices_sup_drop)} baris data kontak Supervisi!")
+            st.rerun()
+          else:
+            st.warning("Silakan pilih minimal 1 baris data terlebih dahulu.")
+
+      with tab_sup_day:
+        daftar_tgl_sup = sorted(
+            df_all_supervisi["Tanggal"].dropna().unique().tolist(), reverse=True
+        )
+        if daftar_tgl_sup:
+          tgl_sup_hapus = st.selectbox(
+              "Pilih Tanggal Log Kontak Supervisi yang akan dihapus:",
+              options=daftar_tgl_sup,
+              key="sb_del_sup_day"
+          )
+          jml_sup_hari = len(df_all_supervisi[df_all_supervisi["Tanggal"] == tgl_sup_hapus])
+          st.info(f"Terdapat **{jml_sup_hari} entri kontak Supervisi** pada tanggal **{tgl_sup_hapus}**.")
+          if st.button(f"🗑️ Hapus Data Kontak Tanggal {tgl_sup_hapus}", type="primary", key="btn_del_sup_day"):
+            df_sup_clean = df_all_supervisi[df_all_supervisi["Tanggal"] != tgl_sup_hapus].drop(
+                columns=["Waktu_Dt", "Tanggal"], errors="ignore"
+            )
+            save_supervisi_database(df_sup_clean)
+            st.success(f"✅ Seluruh data kontak Supervisi ({jml_sup_hari} baris) pada tanggal {tgl_sup_hapus} berhasil dihapus!")
+            st.rerun()
+        else:
+          st.info("Tidak ada data tanggal valid untuk dihapus.")
+
+      with tab_sup_week:
+        df_sup_valid_dt = df_all_supervisi.dropna(subset=["Waktu_Dt"]).copy()
+        if not df_sup_valid_dt.empty:
+          iso_sup_cal = df_sup_valid_dt["Waktu_Dt"].dt.isocalendar()
+          df_sup_valid_dt["Year_Week"] = (
+              iso_sup_cal["year"].astype(str)
+              + "-W"
+              + iso_sup_cal["week"].astype(str).str.zfill(2)
+          )
+          sup_week_options = {}
+          for yw, group in df_sup_valid_dt.groupby("Year_Week"):
+            min_d = group["Tanggal"].min()
+            max_d = group["Tanggal"].max()
+            label = f"{yw} ({min_d} s/d {max_d}) — {len(group)} entri kontak"
+            sup_week_options[label] = yw
+
+          sorted_sup_week_labels = sorted(sup_week_options.keys(), reverse=True)
+          pilih_sup_minggu_label = st.selectbox(
+              "Pilih Minggu Log Kontak Supervisi yang akan dihapus:",
+              options=sorted_sup_week_labels,
+              key="sb_del_sup_week"
+          )
+          if st.button("🗑️ Hapus Data Kontak Minggu Terpilih", type="primary", key="btn_del_sup_week"):
+            target_sup_yw = sup_week_options[pilih_sup_minggu_label]
+            iso_sup_all = df_all_supervisi["Waktu_Dt"].dt.isocalendar()
+            yw_sup_series = (
+                iso_sup_all["year"].astype(str)
+                + "-W"
+                + iso_sup_all["week"].astype(str).str.zfill(2)
+            )
+            df_sup_clean = df_all_supervisi[yw_sup_series != target_sup_yw].drop(
+                columns=["Waktu_Dt", "Tanggal"], errors="ignore"
+            )
+            save_supervisi_database(df_sup_clean)
+            st.success(f"✅ Data kontak Supervisi pada minggu {target_sup_yw} berhasil dihapus!")
+            st.rerun()
+        else:
+          st.info("Tidak ada data waktu valid untuk pengelompokan mingguan.")
+
+      with tab_sup_all:
+        st.error(
+            f"🚨 Tindakan ini akan menghapus **SELURUH ({len(df_all_supervisi)} baris)** log kontak Supervisi secara permanen!"
+        )
+        konfirmasi_hapus_sup_all = st.checkbox(
+            "Izin konfirmasi hapus seluruh data kontak Supervisi.",
+            key="chk_del_sup_all"
+        )
+        if st.button("🔥 KOSONGKAN SEMUA DATA KONTAK SUPERVISI", type="primary", key="btn_del_sup_all"):
+          if konfirmasi_hapus_sup_all:
+            df_sup_empty = pd.DataFrame(columns=EXPECTED_SUPERVISI_COLUMNS)
+            save_supervisi_database(df_sup_empty)
+            st.success("✅ Seluruh database kontak Supervisi telah dikosongkan!")
+            st.rerun()
+          else:
+            st.warning("Centang kotak konfirmasi terlebih dahulu sebelum menghapus seluruh data.")
+
+      st.markdown("##### 📋 Preview Log Input Kontak Manual Supervisi")
+      st.dataframe(
+          df_all_supervisi.drop(columns=["Waktu_Dt", "Tanggal"], errors="ignore").sort_values(
+              by="Waktu", ascending=False
+          ),
+          use_container_width=True,
+      )
+    else:
+      st.info("Belum ada data log input kontak manual dari Supervisi.")
+
+  # ====================================================
+  # LOG DETAIL TRANSAKSI ALL USER (SPG) & MENU HAPUS
+  # ====================================================
+  if not df_all_users.empty:
     st.markdown("---")
-    st.markdown("#### 📑 Log Detail Transaksi All User")
+    st.markdown("#### 📑 Log Detail Transaksi All User (SPG)")
 
-    with st.expander("🗑️ Menu Hapus Log Detail Transaksi (Per Row / Hari / Minggu / All Data)", expanded=False):
+    with st.expander("🗑️ Menu Hapus Log Detail Transaksi SPG (Per Row / Hari / Minggu / All Data)", expanded=False):
       st.warning("⚠️ Perhatian: Data yang sudah dihapus dari database tidak dapat dikembalikan.")
       tab_del_row, tab_del_day, tab_del_week, tab_del_all = st.tabs([
           "🔹 Hapus per Row",
@@ -1164,8 +1430,6 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
         ),
         use_container_width=True,
     )
-  else:
-    st.info("Belum ada data laporan masuk.")
 
   st.stop()
 
