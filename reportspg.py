@@ -137,7 +137,7 @@ EXPECTED_COLUMNS = [
     "Brand_Rokok",
     "Nama_Konsumen",
     "Gender",
-    "Usia",
+    "Range_Umur",
     "No_HP",
     "Instagram",
     "Jumlah_Bungkus",
@@ -151,6 +151,9 @@ def load_database():
   if os.path.exists(DB_FILE):
     try:
       df = pd.read_csv(DB_FILE)
+      # Migrasi kolom lama 'Usia' menjadi 'Range_Umur' jika diperlukan
+      if "Usia" in df.columns and "Range_Umur" not in df.columns:
+        df = df.rename(columns={"Usia": "Range_Umur"})
       for col in EXPECTED_COLUMNS:
         if col not in df.columns:
           df[col] = "-"
@@ -636,9 +639,17 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
         gender_count = df_all_users["Gender"].value_counts()
         st.bar_chart(gender_count)
       with c2:
-        st.markdown("#### 🏙️ Sebaran per Wilayah (Kota/Kab)")
-        kota_count = df_all_users["Kota_Kab"].value_counts()
-        st.bar_chart(kota_count)
+        st.markdown("#### 📊 Sebaran Range Umur Konsumen")
+        if "Range_Umur" in df_all_users.columns:
+          age_count = df_all_users["Range_Umur"].value_counts()
+          st.bar_chart(age_count)
+        else:
+          st.info("Data Range Umur belum tersedia.")
+
+      st.markdown("---")
+      st.markdown("#### 🏙️ Sebaran per Wilayah (Kota/Kab)")
+      kota_count = df_all_users["Kota_Kab"].value_counts()
+      st.bar_chart(kota_count)
 
       st.markdown("---")
       st.markdown("#### 🗺️ Sebaran Kunjungan & Omset per Kecamatan")
@@ -1400,9 +1411,14 @@ if (
         placeholder="Masukkan nama konsumen",
     )
     gender_entry = st.radio("Gender", ["L", "P"], horizontal=True)
-    usia_entry = st.number_input(
-        "Usia", min_value=17, max_value=100, step=1, value=25
+    
+    # Range Umur diganti dari input angka satuan ke selectbox range
+    range_umur_entry = st.selectbox(
+        "Range Umur",
+        options=["18-24", "25-30", "31-35", "36-44", "45+"],
+        help="Pilih rentang usia konsumen"
     )
+
     nohp_entry = st.text_input(
         "No HP",
         value=st.session_state["draft_nohp"],
@@ -1465,7 +1481,7 @@ if (
             "Brand_Rokok": brand_entry,
             "Nama_Konsumen": nama_konsumen.strip(),
             "Gender": gender_entry,
-            "Usia": usia_entry,
+            "Range_Umur": range_umur_entry,
             "No_HP": nohp_entry.strip(),
             "Instagram": ig_formatted,
             "Jumlah_Bungkus": jumlah_bungkus,
