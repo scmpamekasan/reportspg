@@ -123,7 +123,6 @@ st.markdown(
 DB_FILE = "rekap_laporan_spg.csv"
 MASTER_BRAND_FILE = "master_brand_rokok.json"
 MASTER_LOKASI_FILE = "Master WarkopLKK.xlsx"
-MASTER_PLAT_FILE = "master_plat_kendaraan.json"
 MASTER_SPG_FILE = "master_nama_spg.json"
 MASTER_TEAM_BRAND_FILE = "master_team_brand.json"
 JADWAL_SPG_FILE = "Jadwal SPG.xlsx"
@@ -133,7 +132,6 @@ EXPECTED_COLUMNS = [
     "Promotor",
     "Nama_SPG",
     "Kota_Kab",
-    "Plat_Kendaraan",
     "Kecamatan",
     "Warkop_LKK",
     "Brand_Rokok",
@@ -176,15 +174,6 @@ DEFAULT_BRANDS = [
     "Black Matcha K12",
     "Djarum 76 Aksara",
 ]
-DEFAULT_PLATS = [
-    "L 1774 BAS",
-    "L 1176 BAN",
-    "L 1046 BAN",
-    "N 1103 ABT",
-    "L 1233 BBO",
-    "B 2644 UYA",
-    "L 1728 BAY",
-]
 DEFAULT_SPGS = ["Nanda", "Dewi", "Aci", "Ayu"]
 
 
@@ -200,17 +189,15 @@ def load_master_brands():
 
 def save_master_brands(brands):
   with open(MASTER_BRAND_FILE, "w", encoding="utf-8") as f:
-     json.dump(brands, f, ensure_ascii=False, indent=2)
+    json.dump(brands, f, ensure_ascii=False, indent=2)
 
 
 def load_master_team_brands():
-  """Memuat pemetaan brand rokok per Team (Team 1 - Team 20)."""
   default_teams = {f"Team SPG {i}": DEFAULT_BRANDS.copy() for i in range(1, 21)}
   if os.path.exists(MASTER_TEAM_BRAND_FILE):
     try:
       with open(MASTER_TEAM_BRAND_FILE, "r", encoding="utf-8") as f:
         data = json.load(f)
-        # Pastikan Team 1 - 20 lengkap
         for i in range(1, 21):
           t_name = f"Team SPG {i}"
           if t_name not in data:
@@ -266,21 +253,6 @@ def load_jadwal_spg():
   return pd.DataFrame()
 
 
-def load_master_plats():
-  if os.path.exists(MASTER_PLAT_FILE):
-    try:
-      with open(MASTER_PLAT_FILE, "r", encoding="utf-8") as f:
-        return json.load(f)
-    except Exception:
-      return DEFAULT_PLATS
-  return DEFAULT_PLATS
-
-
-def save_master_plats(plats):
-  with open(MASTER_PLAT_FILE, "w", encoding="utf-8") as f:
-    json.dump(plats, f, ensure_ascii=False, indent=2)
-
-
 def load_master_spgs():
   if os.path.exists(MASTER_SPG_FILE):
     try:
@@ -305,18 +277,16 @@ TARGET_RULES = {
     "D.76 Apel Royal": {"target_spg": 40, "target_team": 80},
     "D.76 Apel": {"target_spg": 30, "target_team": 60},
     "Djarum 76 Aksara": {"target_spg": 30, "target_team": 60},
-    "Black Matcha Siro": {"target_spg": 20, "target_team": 80},
-    "Black Matcha Kuro": {"target_spg": 20, "target_team": 80},
 }
 
 
 def cek_status_target_spg(brand, omset_spg):
-  rule = TARGET_RULES.get(brand, {"target_spg": 20, "target_team": 80})
+  rule = TARGET_RULES.get(brand, {"target_spg": 25, "target_team": 50})
   return "Achieved" if omset_spg >= rule["target_spg"] else "Not Achieved"
 
 
 def cek_status_target_team(brand, omset_team):
-  rule = TARGET_RULES.get(brand, {"target_spg": 20, "target_team": 80})
+  rule = TARGET_RULES.get(brand, {"target_spg": 25, "target_team": 50})
   return "Achieved" if omset_team >= rule["target_team"] else "Not Achieved"
 
 
@@ -337,8 +307,6 @@ if "user_spg" not in st.session_state:
   st.session_state["user_spg"] = ""
 if "kota_kab" not in st.session_state:
   st.session_state["kota_kab"] = ""
-if "plat_kendaraan" not in st.session_state:
-  st.session_state["plat_kendaraan"] = ""
 if "admin_logged_in" not in st.session_state:
   st.session_state["admin_logged_in"] = False
 if "admin_view" not in st.session_state:
@@ -648,53 +616,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
       st.rerun()
     st.stop()
 
-  # --- TAMPILAN 4: MASTER DATA PLAT KENDARAAN ---
-  elif st.session_state["admin_view"] == "Master_Plat":
-    st.markdown("## 🚗 Master Data: Plat Kendaraan Operasional")
-    st.caption(
-        "Kelola daftar plat kendaraan yang akan muncul pada pilihan login SPG."
-    )
-
-    current_plats = load_master_plats()
-
-    with st.form("form_tambah_plat"):
-      new_plat_name = st.text_input(
-          "Nomor Plat Kendaraan Baru", placeholder="Contoh: L 1234 AB"
-      )
-      btn_add_plat = st.form_submit_button("➕ Tambah Plat Kendaraan")
-      if btn_add_plat:
-        plat_clean = new_plat_name.strip().upper()
-        if plat_clean:
-          if plat_clean not in current_plats:
-            current_plats.append(plat_clean)
-            save_master_plats(current_plats)
-            st.success(f"✅ Plat kendaraan '{plat_clean}' berhasil ditambahkan!")
-            st.rerun()
-          else:
-            st.warning("Plat kendaraan tersebut sudah ada dalam daftar.")
-        else:
-          st.warning("Mohon masukkan nomor plat kendaraan.")
-
-    st.markdown("---")
-    st.markdown("#### 📋 Daftar Plat Kendaraan Terdaftar")
-    for idx, p in enumerate(current_plats):
-      col_p1, col_p2 = st.columns([0.8, 0.2])
-      with col_p1:
-        st.write(f"**{idx+1}.** `{p}`")
-      with col_p2:
-        if st.button("🗑️ Hapus", key=f"del_plat_{idx}"):
-          current_plats.pop(idx)
-          save_master_plats(current_plats)
-          st.success("Plat kendaraan berhasil dihapus!")
-          st.rerun()
-
-    st.markdown("---")
-    if st.button("⬅️ Kembali ke Dashboard"):
-      st.session_state["admin_view"] = "Dashboard"
-      st.rerun()
-    st.stop()
-
-  # --- TAMPILAN 5: ANALITIK & REKAP ALL ---
+  # --- TAMPILAN 4: ANALITIK & REKAP ALL ---
   elif st.session_state["admin_view"] == "Analitik":
     st.markdown("## 📊 Analitik & Rekapitulasi All User")
     st.caption(
@@ -762,7 +684,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
       st.rerun()
     st.stop()
 
-  # --- TAMPILAN 6: PETA RUTE ALL USER ---
+  # --- TAMPILAN 5: PETA RUTE ALL USER ---
   elif st.session_state["admin_view"] == "Peta_Rute":
     st.markdown("## 🗺️ Visualisasi Peta Rute Perjalanan (All User)")
     st.caption(
@@ -902,15 +824,6 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
         use_container_width=True,
     ):
       st.session_state["admin_view"] = "Master_Brand"
-      st.rerun()
-
-  col_m3, _ = st.columns(2)
-  with col_m3:
-    if st.button(
-        "🚗 Plat Kendaraan\nKelola nopol tim",
-        use_container_width=True,
-    ):
-      st.session_state["admin_view"] = "Master_Plat"
       st.rerun()
 
   st.markdown("---")
@@ -1161,30 +1074,20 @@ if not st.session_state["logged_in"]:
     with st.form("form_login"):
       st.markdown("#### 🚀 Masuk ke Akun Operasional")
       st.caption(
-          "Pilih tim (1-20), wilayah, dan kendaraan Anda, lalu masuk tanpa kata sandi."
+          "Pilih tim (1-20) dan wilayah Anda, lalu masuk tanpa kata sandi."
       )
 
       list_spg = [f"Team SPG {i}" for i in range(1, 21)]
       pilihan_user = st.selectbox("👤 Pilih User (Team SPG)", list_spg)
-
-      col_k1, col_k2 = st.columns(1)
-      with col_k1:
-        pilihan_kota = st.selectbox(
-            "🏙️ Wilayah Operasional", ["Surabaya", "Gresik"]
-        )
-    
+      pilihan_kota = st.selectbox("🏙️ Wilayah Operasional", ["Surabaya", "Gresik"])
 
       btn_login = st.form_submit_button("Masuk Aplikasi", type="primary")
 
       if btn_login:
-        if not plat_input or not str(plat_input).strip():
-          st.warning("⚠️ Mohon pilih plat nomor kendaraan terlebih dahulu.")
-        else:
-          st.session_state["logged_in"] = True
-          st.session_state["user_spg"] = pilihan_user
-          st.session_state["kota_kab"] = pilihan_kota
-          st.session_state["plat_kendaraan"] = str(plat_input).strip().upper()
-          st.rerun()
+        st.session_state["logged_in"] = True
+        st.session_state["user_spg"] = pilihan_user
+        st.session_state["kota_kab"] = pilihan_kota
+        st.rerun()
 
     st.markdown(
         """
@@ -1209,8 +1112,7 @@ with col_banner:
       <div class="user-banner">
           <div class="user-banner-title">👤 {st.session_state['user_spg']}</div>
           <div class="user-banner-sub">
-              🏙️ Wilayah: <b>{st.session_state['kota_kab']}</b> &nbsp;|&nbsp;
-              🚗 Plat: <b>{st.session_state['plat_kendaraan']}</b>
+              🏙️ Wilayah: <b>{st.session_state['kota_kab']}</b>
           </div>
       </div>
       """,
@@ -1479,8 +1381,6 @@ if (
         f" {str(nama_warkop_manual).strip()}"
     )
 
-    # Ambil pilihan brand rokok khusus untuk Team yang sedang login dari Master Team Brand
-  # Jika tidak ada, fallback ke seluruh brand
     team_brands_map = load_master_team_brands()
     allowed_brands_for_team = team_brands_map.get(
         st.session_state["user_spg"], load_master_brands()
@@ -1560,7 +1460,6 @@ if (
             "Promotor": st.session_state["user_spg"],
             "Nama_SPG": str(nama_spg_manual).strip(),
             "Kota_Kab": st.session_state["kota_kab"],
-            "Plat_Kendaraan": st.session_state["plat_kendaraan"],
             "Kecamatan": kecamatan_pilihan,
             "Warkop_LKK": str(nama_warkop_manual).strip(),
             "Brand_Rokok": brand_entry,
