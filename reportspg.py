@@ -125,6 +125,7 @@ MASTER_BRAND_FILE = "master_brand_rokok.json"
 MASTER_LOKASI_FILE = "Master WarkopLKK.xlsx"
 MASTER_PLAT_FILE = "master_plat_kendaraan.json"
 MASTER_SPG_FILE = "master_nama_spg.json"
+MASTER_TEAM_BRAND_FILE = "master_team_brand.json"
 JADWAL_SPG_FILE = "Jadwal SPG.xlsx"
 
 EXPECTED_COLUMNS = [
@@ -166,7 +167,7 @@ def save_database(df):
 
 
 # ====================================================
-# MANAJEMEN MASTER DATA & JADWAL SPG
+# MANAJEMEN MASTER DATA & TEAM BRAND
 # ====================================================
 DEFAULT_BRANDS = [
     "D.Super 12",
@@ -199,7 +200,30 @@ def load_master_brands():
 
 def save_master_brands(brands):
   with open(MASTER_BRAND_FILE, "w", encoding="utf-8") as f:
-    json.dump(brands, f, ensure_ascii=False, indent=2)
+     json.dump(brands, f, ensure_ascii=False, indent=2)
+
+
+def load_master_team_brands():
+  """Memuat pemetaan brand rokok per Team (Team 1 - Team 20)."""
+  default_teams = {f"Team SPG {i}": DEFAULT_BRANDS.copy() for i in range(1, 21)}
+  if os.path.exists(MASTER_TEAM_BRAND_FILE):
+    try:
+      with open(MASTER_TEAM_BRAND_FILE, "r", encoding="utf-8") as f:
+        data = json.load(f)
+        # Pastikan Team 1 - 20 lengkap
+        for i in range(1, 21):
+          t_name = f"Team SPG {i}"
+          if t_name not in data:
+            data[t_name] = DEFAULT_BRANDS.copy()
+        return data
+    except Exception:
+      return default_teams
+  return default_teams
+
+
+def save_master_team_brands(team_brands):
+  with open(MASTER_TEAM_BRAND_FILE, "w", encoding="utf-8") as f:
+    json.dump(team_brands, f, ensure_ascii=False, indent=2)
 
 
 def load_master_lokasi_excel():
@@ -231,7 +255,6 @@ def save_master_lokasi_excel(df_excel):
 
 
 def load_jadwal_spg():
-  """Membaca file Jadwal SPG.xlsx."""
   if os.path.exists(JADWAL_SPG_FILE):
     try:
       df_jadwal = pd.read_excel(JADWAL_SPG_FILE)
@@ -359,6 +382,9 @@ if not st.session_state["logged_in"]:
       ):
         st.session_state["admin_view"] = "Dashboard"
         st.rerun()
+      if st.button("👥 Master Team & Brand", use_container_width=True):
+        st.session_state["admin_view"] = "Master_Team"
+        st.rerun()
       if st.button("👩‍💼 Master Nama SPG", use_container_width=True):
         st.session_state["admin_view"] = "Master_SPG"
         st.rerun()
@@ -388,8 +414,54 @@ if not st.session_state["logged_in"]:
 # ====================================================
 if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
 
+  # --- TAMPILAN 0: MASTER TEAM & BRAND ROKOK ---
+  if st.session_state["admin_view"] == "Master_Team":
+    st.markdown("## 👥 Master Data: Team 1 - 20 & Alokasi Brand Rokok")
+    st.caption("Atur pilihan merek rokok yang dapat dibawa oleh masing-masing Team SPG (Team 1 sampai 20).")
+
+    team_brands_dict = load_master_team_brands()
+    all_available_brands = load_master_brands()
+
+    selected_team_config = st.selectbox(
+        "Pilih Team SPG untuk Konfigurasi Brand",
+        options=[f"Team SPG {i}" for i in range(1, 21)]
+    )
+
+    current_assigned_brands = team_brands_dict.get(selected_team_config, all_available_brands)
+
+    with st.form("form_config_team_brand"):
+      st.markdown(f"#### Alokasi Merek untuk `{selected_team_config}`")
+      selected_brands_input = st.multiselect(
+          "Pilih Brand Rokok yang Diizinkan",
+          options=all_available_brands,
+          default=[b for b in current_assigned_brands if b in all_available_brands]
+      )
+      btn_save_team_brand = st.form_submit_button("💾 Simpan Alokasi Brand Team")
+
+      if btn_save_team_brand:
+        team_brands_dict[selected_team_config] = selected_brands_input
+        save_master_team_brands(team_brands_dict)
+        st.success(f"✅ Alokasi brand rokok untuk **{selected_team_config}** berhasil disimpan!")
+        st.rerun()
+
+    st.markdown("---")
+    st.markdown("#### 📋 Ringkasan Alokasi Brand Seluruh Team (1 - 20)")
+    summary_list = []
+    for i in range(1, 21):
+      t_name = f"Team SPG {i}"
+      b_list = team_brands_dict.get(t_name, [])
+      summary_list.append({"Team": t_name, "Brand Diizinkan": ", ".join(b_list) if b_list else "(Belum ada brand)"})
+    
+    st.dataframe(pd.DataFrame(summary_list), use_container_width=True)
+
+    st.markdown("---")
+    if st.button("⬅️ Kembali ke Dashboard"):
+      st.session_state["admin_view"] = "Dashboard"
+      st.rerun()
+    st.stop()
+
   # --- TAMPILAN 1: MASTER DATA NAMA SPG ---
-  if st.session_state["admin_view"] == "Master_SPG":
+  elif st.session_state["admin_view"] == "Master_SPG":
     st.markdown("## 👩‍💼 Master Data: Nama SPG")
     st.caption("Tambah, ubah, atau hapus daftar nama SPG aktif.")
 
@@ -808,24 +880,33 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
   col_m1, col_m2 = st.columns(2)
   with col_m1:
     if st.button(
+        "👥 Master Team & Brand\nAtur brand rokok per team (1-20)",
+        use_container_width=True,
+    ):
+      st.session_state["admin_view"] = "Master_Team"
+      st.rerun()
+    if st.button(
         "👩‍💼 Nama SPG\nKelola daftar SPG",
         use_container_width=True,
     ):
       st.session_state["admin_view"] = "Master_SPG"
       st.rerun()
+  with col_m2:
     if st.button(
         "📍 Lokasi Warkop (Excel)\nKelola dari Master WarkopLKK.xlsx",
         use_container_width=True,
     ):
       st.session_state["admin_view"] = "Master_Lokasi"
       st.rerun()
-  with col_m2:
     if st.button(
         "🚬 Merek Rokok & Target\nKelola daftar merek & target",
         use_container_width=True,
     ):
       st.session_state["admin_view"] = "Master_Brand"
       st.rerun()
+
+  col_m3, _ = st.columns(2)
+  with col_m3:
     if st.button(
         "🚗 Plat Kendaraan\nKelola nopol tim",
         use_container_width=True,
@@ -1037,7 +1118,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
             f"🚨 Tindakan ini akan menghapus **SELURUH ({len(df_all_users)} baris)** data transaksi dari database secara permanen!"
         )
         konfirmasi_hapus_all = st.checkbox(
-            "Saya yakin ingin menghapus seluruh data transaksi.",
+            "Izin konfirmasi hapus seluruh data transaksi.",
             key="chk_del_all"
         )
         if st.button("🔥 KOSONGKAN SEMUA DATA TRANSAKSI", type="primary", key="btn_del_all"):
@@ -1081,7 +1162,7 @@ if not st.session_state["logged_in"]:
     with st.form("form_login"):
       st.markdown("#### 🚀 Masuk ke Akun Operasional")
       st.caption(
-          "Pilih tim, wilayah, dan kendaraan Anda, lalu masuk tanpa kata sandi."
+          "Pilih tim (1-20), wilayah, dan kendaraan Anda, lalu masuk tanpa kata sandi."
       )
 
       list_spg = [f"Team SPG {i}" for i in range(1, 21)]
@@ -1281,12 +1362,10 @@ is_scheduled_today = True
 schedule_check_msg = ""
 
 if not df_jadwal_raw.empty:
-  # Normalisasi kolom kota & kecamatan
   kota_col_j = next((c for c in df_jadwal_raw.columns if "kota" in c.lower()), None)
   kec_col_j = next((c for c in df_jadwal_raw.columns if "kecamatan" in c.lower()), None)
   
   if kota_col_j and kec_col_j:
-    # Cari kolom tanggal hari ini (hari ini = datetime.now().date() atau tanggal simulasi aktif)
     today_date = datetime.now().date()
     today_col = None
     
@@ -1300,7 +1379,6 @@ if not df_jadwal_raw.empty:
         continue
         
     if today_col:
-      # Filter baris berdasarkan Kota dan Kecamatan pilihan
       mask_j = (
           (df_jadwal_raw[kota_col_j].astype(str).str.strip().str.lower() == st.session_state["kota_kab"].strip().lower()) &
           (df_jadwal_raw[kec_col_j].astype(str).str.strip().str.lower() == str(kecamatan_pilihan).strip().lower())
@@ -1309,7 +1387,6 @@ if not df_jadwal_raw.empty:
       
       if not row_matched.empty:
         val_jadwal = str(row_matched.iloc[0][today_col]).strip()
-        # Cek apakah cell jadwal menyebutkan user aktif (misal: "Team 1", atau mengandung string user_spg)
         user_team_str = st.session_state["user_spg"].strip().lower()
         val_jadwal_lower = val_jadwal.lower()
         
@@ -1317,7 +1394,6 @@ if not df_jadwal_raw.empty:
           is_scheduled_today = False
           schedule_check_msg = f"❌ Tidak ada jadwal penugasan untuk {st.session_state['user_spg']} di Kecamatan {kecamatan_pilihan} pada tanggal hari ini ({today_date})."
         elif user_team_str not in val_jadwal_lower and "team" in user_team_str and "team" not in val_jadwal_lower:
-          # Jika format di excel "Team 1" dan user adalah "Team SPG 1"
           team_digit = ''.join(filter(str.isdigit, user_team_str))
           excel_digit = ''.join(filter(str.isdigit, val_jadwal_lower))
           if team_digit and excel_digit and team_digit != excel_digit:
@@ -1413,11 +1489,19 @@ if (
         f" {str(nama_warkop_manual).strip()}"
     )
 
-    daftar_master_brand = load_master_brands()
+    # Ambil pilihan brand rokok khusus untuk Team yang sedang login dari Master Team Brand
+  # Jika tidak ada, fallback ke seluruh brand
+    team_brands_map = load_master_team_brands()
+    allowed_brands_for_team = team_brands_map.get(
+        st.session_state["user_spg"], load_master_brands()
+    )
+    if not allowed_brands_for_team:
+      allowed_brands_for_team = load_master_brands()
+
     brand_entry = st.selectbox(
-        "Brand Rokok",
-        options=daftar_master_brand,
-        help="Dikelola melalui Master Data Merek Rokok Admin",
+        f"Brand Rokok (Dikhususkan untuk {st.session_state['user_spg']})",
+        options=allowed_brands_for_team,
+        help="Daftar merek rokok disesuaikan dengan alokasi Master Team Admin",
     )
 
     nama_konsumen = st.text_input(
