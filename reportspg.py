@@ -1085,6 +1085,8 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
       )
 
     st.markdown("#### 🏆 Leaderboard Team SPG (Berdasarkan Target Team)")
+    
+    # 1. Kelompokkan data dasar
     df_team_leaderboard = (
         df_all_users.groupby(["Promotor", "Kota_Kab", "Brand_Rokok"])
         .agg(
@@ -1093,20 +1095,33 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
         )
         .reset_index()
     )
-    df_team_leaderboard["Target_Team"] = df_team_leaderboard[
-        "Brand_Rokok"
-    ].apply(
-        lambda b: TARGET_RULES.get(b, {"target_team": 50})["target_team"]
+
+    # 2. Normalisasi nama brand khusus untuk Siro & Kuro agar digabung menjadi satu baris
+    df_team_leaderboard["Brand_Rokok_Clean"] = df_team_leaderboard["Brand_Rokok"].apply(
+        lambda b: "Djarum Black Siro & Kuro" if b in ["Djarum Black Siro", "Djarum Black Kuro"] else b
     )
+
+    # 3. Re-grouping berdasarkan Brand_Rokok_Clean yang sudah digabung
+    df_team_leaderboard = (
+        df_team_leaderboard.groupby(["Promotor", "Kota_Kab", "Brand_Rokok_Clean"])
+        .agg(
+            Total_Omset_Team=("Total_Omset_Team", "sum"),
+            Total_Konsumen_Beli=("Total_Konsumen_Beli", "sum"),
+        )
+        .reset_index()
+        .rename(columns={"Brand_Rokok_Clean": "Brand_Rokok"})
+    )
+
+    # 4. Penentuan Target & Status Target Team
+    def get_team_target(brand):
+      if brand == "Djarum Black Siro & Kuro":
+        return 80
+      return TARGET_RULES.get(brand, {"target_team": 50})["target_team"]
+
+    df_team_leaderboard["Target_Team"] = df_team_leaderboard["Brand_Rokok"].apply(get_team_target)
     
-    # PERBAIKAN PEMANGGILAN DI SINI:
     df_team_leaderboard["Status_Target_Team"] = df_team_leaderboard.apply(
-        lambda r: cek_status_target_team(
-            r["Brand_Rokok"], 
-            r["Total_Omset_Team"], 
-            df_data=df_all_users, 
-            promotor_name=r["Promotor"]
-        ),
+        lambda r: "Achieved" if r["Total_Omset_Team"] >= r["Target_Team"] else "Not Achieved",
         axis=1,
     )
 
@@ -2114,6 +2129,8 @@ if not df_user_rekap.empty:
   df_user_rekap["Nama_SPG"] = df_user_rekap["Nama_SPG"].fillna("-")
 
   st.markdown("#### 📋 Tabel Evaluasi Harian Per SPG (Berdasarkan Target SPG)")
+  
+  # 1. Agregasi awal
   df_eval_spg = (
       df_user_rekap.groupby(["Tanggal", "Nama_SPG", "Brand_Rokok"])
       .agg(
@@ -2123,11 +2140,34 @@ if not df_user_rekap.empty:
       )
       .reset_index()
   )
-  df_eval_spg["Target_SPG"] = df_eval_spg["Brand_Rokok"].apply(
-      lambda b: TARGET_RULES.get(b, {"target_spg": 25})["target_spg"]
+
+  # 2. Normalisasi brand Siro & Kuro
+  df_eval_spg["Brand_Rokok_Clean"] = df_eval_spg["Brand_Rokok"].apply(
+      lambda b: "Djarum Black Siro & Kuro" if b in ["Djarum Black Siro", "Djarum Black Kuro"] else b
   )
+
+  # 3. Re-grouping gabungan
+  df_eval_spg = (
+      df_eval_spg.groupby(["Tanggal", "Nama_SPG", "Brand_Rokok_Clean"])
+      .agg(
+          Jumlah_Titik_Warkop=("Jumlah_Titik_Warkop", "max"),
+          Konsumen_Beli=("Konsumen_Beli", "sum"),
+          Jumlah_Omset_SPG=("Jumlah_Omset_SPG", "sum"),
+      )
+      .reset_index()
+      .rename(columns={"Brand_Rokok_Clean": "Brand_Rokok"})
+  )
+
+  # 4. Target SPG
+  def get_spg_target(brand):
+    if brand == "Djarum Black Siro & Kuro":
+      return 40
+    return TARGET_RULES.get(brand, {"target_spg": 25})["target_spg"]
+
+  df_eval_spg["Target_SPG"] = df_eval_spg["Brand_Rokok"].apply(get_spg_target)
+  
   df_eval_spg["Status_Target_SPG"] = df_eval_spg.apply(
-      lambda r: cek_status_target_spg(r["Brand_Rokok"], r["Jumlah_Omset_SPG"]),
+      lambda r: "Achieved" if r["Jumlah_Omset_SPG"] >= r["Target_SPG"] else "Not Achieved",
       axis=1,
   )
 
