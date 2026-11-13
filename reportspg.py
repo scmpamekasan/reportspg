@@ -299,6 +299,18 @@ if "admin_logged_in" not in st.session_state:
 if "admin_view" not in st.session_state:
   st.session_state["admin_view"] = "Dashboard"
 
+# Inisialisasi state draft formulir agar aman saat tertutup/tidur
+if "draft_konsumen" not in st.session_state:
+  st.session_state["draft_konsumen"] = ""
+if "draft_nohp" not in st.session_state:
+  st.session_state["draft_nohp"] = ""
+if "draft_ig" not in st.session_state:
+  st.session_state["draft_ig"] = ""
+if "draft_bungkus" not in st.session_state:
+  st.session_state["draft_bungkus"] = 1
+if "draft_bumo" not in st.session_state:
+  st.session_state["draft_bumo"] = ""
+
 # ====================================================
 # SIDEBAR: LOGIN ADMIN DI HALAMAN UTAMA
 # ====================================================
@@ -628,7 +640,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
       st.rerun()
     st.stop()
 
-  # --- TAMPILAN 6: PETA RUTE ALL USER (DENGAN FILTER TEAM, SPG, & TANGGAL) ---
+  # --- TAMPILAN 6: PETA RUTE ALL USER ---
   elif st.session_state["admin_view"] == "Peta_Rute":
     st.markdown("## 🗺️ Visualisasi Peta Rute Perjalanan (All User)")
     st.caption(
@@ -722,10 +734,6 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
         )
 
         st.pydeck_chart(deck_map)
-        st.info(
-            "💡 Garis merah menunjukkan rute perjalanan, sedangkan titik biru"
-            " menunjukkan titik warkop kunjungan."
-        )
       else:
         st.warning(
             "Tidak ada data koordinat yang cocok dengan filter yang dipilih."
@@ -874,110 +882,6 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
         ),
         use_container_width=True,
     )
-
-    # Menu Penghapusan Data Khusus Admin
-    with st.expander("⚙️ Menu Pengaturan & Hapus Log (Admin Panel)"):
-      tab_row, tab_hari, tab_minggu, tab_all = st.tabs([
-          "Hapus per Row",
-          "Hapus per Hari",
-          "Hapus per Minggu",
-          "Hapus Semua (All)",
-      ])
-
-      with tab_row:
-        options_row = []
-        for idx, row in df_all_users.iterrows():
-          label = (
-              f"[{row['Waktu']}] Team: {row['Promotor']} | SPG:"
-              f" {row['Nama_SPG']} | Konsumen: {row['Nama_Konsumen']} -"
-              f" {row['Warkop_LKK']} ({row['Brand_Rokok']})"
-          )
-          options_row.append((idx, label))
-
-        selected_row_to_delete = st.selectbox(
-            "Pilih Data Baris",
-            options=options_row,
-            format_func=lambda x: x[1],
-            key="sel_row_admin",
-        )
-
-        if st.button("🗑️ Hapus Baris Terpilih (Admin)", type="secondary"):
-          if selected_row_to_delete:
-            original_idx = selected_row_to_delete[0]
-            df_master_all = load_database()
-            df_master_all = df_master_all.drop(original_idx).reset_index(
-                drop=True
-            )
-            save_database(df_master_all)
-            st.success(
-                "✅ Berhasil menghapus baris data terpilih oleh Admin!"
-            )
-            st.rerun()
-
-      with tab_hari:
-        unique_dates = sorted(
-            df_all_users["Tanggal"].dropna().unique().tolist(), reverse=True
-        )
-        if unique_dates:
-          selected_date = st.selectbox(
-              "Pilih Tanggal", options=unique_dates, key="sel_date_admin"
-          )
-          if st.button(
-              "🗑️ Hapus Log Tanggal Ini (Admin)", type="secondary"
-          ):
-            df_master_all = load_database()
-            df_master_all["Tgl_Cek"] = pd.to_datetime(
-                df_master_all["Waktu"], errors="coerce"
-            ).dt.date
-            mask_keep = df_master_all["Tgl_Cek"] != selected_date
-            df_master_all = df_master_all[mask_keep].drop(
-                columns=["Tgl_Cek"], errors="ignore"
-            )
-            save_database(df_master_all)
-            st.success(
-                f"✅ Berhasil menghapus semua log tanggal {selected_date}!"
-            )
-            st.rerun()
-        else:
-          st.info("Tidak ada data tanggal yang tersedia.")
-
-      with tab_minggu:
-        if st.button(
-            "🗑️ Hapus Log 7 Hari Terakhir (Admin)", type="secondary"
-        ):
-          cutoff_date = datetime.now() - timedelta(days=7)
-          df_master_all = load_database()
-          df_master_all["Dt_Cek"] = pd.to_datetime(
-              df_master_all["Waktu"], errors="coerce"
-          )
-          mask_keep = df_master_all["Dt_Cek"] < cutoff_date
-          df_master_all = df_master_all[mask_keep].drop(
-              columns=["Dt_Cek"], errors="ignore"
-          )
-          save_database(df_master_all)
-          st.success("✅ Berhasil menghapus log 7 hari terakhir!")
-          st.rerun()
-
-      with tab_all:
-        st.warning(
-            "⚠️ Perhatian: Tindakan ini akan menghapus **SELURUH** riwayat"
-            " laporan dari semua Team SPG secara permanen!"
-        )
-        confirm_delete_all = st.checkbox(
-            "Saya yakin ingin menghapus seluruh data sistem",
-            key="chk_all_admin",
-        )
-        if st.button(
-            "🗑️ Hapus Semua Data Sistem (All)",
-            type="primary",
-            disabled=not confirm_delete_all,
-        ):
-          empty_df = pd.DataFrame(columns=EXPECTED_COLUMNS)
-          save_database(empty_df)
-          st.success(
-              "✅ Seluruh database laporan berhasil dikosongkan oleh Admin!"
-          )
-          st.rerun()
   else:
     st.info("Belum ada data laporan masuk.")
 
@@ -1213,8 +1117,12 @@ if (
       f" **Kecamatan {kecamatan_pilihan}** siap diisi."
   )
   st.markdown("---")
+
+  # Fitur Draft Otomatis: Menyimpan nilai ke session_state agar aman jika HP tertutup
   with st.form("form_laporan_spg"):
-    st.markdown("### 📝 Form Input Laporan Konsumen")
+    st.markdown(
+        "### 📝 Form Input Laporan Konsumen &nbsp; `💾 Dilengkapi Auto-Draft`"
+    )
     st.write(
         f"**Team Login:** {st.session_state['user_spg']} | **Nama SPG:**"
         f" {str(nama_spg_manual).strip()} | **Warkop/LKK:**"
@@ -1229,23 +1137,56 @@ if (
     )
 
     nama_konsumen = st.text_input(
-        "Nama Konsumen", placeholder="Masukkan nama konsumen"
+        "Nama Konsumen",
+        value=st.session_state["draft_konsumen"],
+        placeholder="Masukkan nama konsumen",
     )
     gender_entry = st.radio("Gender", ["L", "P"], horizontal=True)
     usia_entry = st.number_input(
         "Usia", min_value=17, max_value=100, step=1, value=25
     )
-    nohp_entry = st.text_input("No HP", placeholder="Contoh: 081234567890")
-    instagram_input = st.text_input("Instagram", placeholder="username_ig")
+    nohp_entry = st.text_input(
+        "No HP",
+        value=st.session_state["draft_nohp"],
+        placeholder="Contoh: 081234567890",
+    )
+    instagram_input = st.text_input(
+        "Instagram",
+        value=st.session_state["draft_ig"],
+        placeholder="username_ig",
+    )
     jumlah_bungkus = st.number_input(
-        "Jumlah Bungkus", min_value=1, step=1, value=1
+        "Jumlah Bungkus",
+        min_value=1,
+        step=1,
+        value=st.session_state["draft_bungkus"],
     )
     rokok_asal_bumo = st.text_input(
         "Rokok Asal (BUMO)",
+        value=st.session_state["draft_bumo"],
         placeholder="Merk rokok yang biasa dikonsumsi sebelumnya",
     )
 
-    btn_kirim = st.form_submit_button("🚀 Kirim Laporan ke Database")
+    col_btn1, col_btn2 = st.columns(2)
+    with col_btn1:
+      btn_save_draft = st.form_submit_button(
+          "💾 Simpan Draft Saja", type="secondary"
+      )
+    with col_btn2:
+      btn_kirim = st.form_submit_button(
+          "🚀 Kirim Laporan ke Database", type="primary"
+      )
+
+    if btn_save_draft:
+      st.session_state["draft_konsumen"] = nama_konsumen
+      st.session_state["draft_nohp"] = nohp_entry
+      st.session_state["draft_ig"] = instagram_input
+      st.session_state["draft_bungkus"] = jumlah_bungkus
+      st.session_state["draft_bumo"] = rokok_asal_bumo
+      st.info(
+          "💾 Draft laporan berhasil diamankan ke memori sesi sementara!"
+          " (Aman jika HP sempat tidur sejenak)."
+      )
 
     if btn_kirim:
       if not nama_konsumen.strip():
@@ -1279,6 +1220,14 @@ if (
         df_new_row = pd.DataFrame([data_baru])
         df_all = pd.concat([df_all, df_new_row], ignore_index=True)
         save_database(df_all)
+
+        # Reset draft setelah sukses terkirim
+        st.session_state["draft_konsumen"] = ""
+        st.session_state["draft_nohp"] = ""
+        st.session_state["draft_ig"] = ""
+        st.session_state["draft_bungkus"] = 1
+        st.session_state["draft_bumo"] = ""
+
         st.balloons()
         st.success(
             f"🎉 Laporan konsumen **{nama_konsumen}** oleh SPG"
