@@ -386,8 +386,18 @@ def style_status_target(val):
 
 
 # ====================================================
-# INISIALISASI SESSION STATE
+# INISIALISASI SESSION STATE & CALLBACK USER CHANGE
 # ====================================================
+def reset_session_on_user_change():
+  st.session_state["logged_in"] = False
+  st.session_state["user_spg"] = st.session_state["selected_team_login"]
+  st.session_state["draft_konsumen"] = ""
+  st.session_state["draft_nohp"] = ""
+  st.session_state["draft_ig"] = ""
+  st.session_state["draft_bungkus"] = 1
+  st.session_state["draft_bumo"] = ""
+
+
 if "logged_in" not in st.session_state:
   st.session_state["logged_in"] = False
 if "user_spg" not in st.session_state:
@@ -397,7 +407,7 @@ if "plat_mobil" not in st.session_state:
 if "kota_kab" not in st.session_state:
   st.session_state["kota_kab"] = ""
 if "login_mode" not in st.session_state:
-  st.session_state["login_mode"] = "SPG"  # Pilihan: 'SPG' atau 'Supervisi'
+  st.session_state["login_mode"] = "SPG"
 if "admin_logged_in" not in st.session_state:
   st.session_state["admin_logged_in"] = False
 if "admin_view" not in st.session_state:
@@ -1122,7 +1132,12 @@ if not st.session_state["logged_in"]:
 
     with st.form("form_login_main"):
       list_spg = [f"Team SPG {i}" for i in range(1, 21)]
-      pilihan_user = st.selectbox("👤 Pilih User / Team SPG", list_spg, key="selected_team_login")
+      pilihan_user = st.selectbox(
+          "👤 Pilih User / Team SPG",
+          list_spg,
+          key="selected_team_login",
+          on_change=reset_session_on_user_change,
+      )
 
       plat_mobil_input = ""
       if st.session_state["login_mode"] == "Supervisi":
@@ -1402,9 +1417,6 @@ if st.session_state["login_mode"] == "Supervisi":
 
     if btn_simpan_kontak:
       df_sup_db = load_supervisi_database()
-      # Cek apakah sudah ada entri untuk team, kota, kecamatan, warkop pada hari ini (atau simpan baru)
-      tgl_hari_ini = datetime.now().strftime("%Y-%m-%d")
-      
       new_sup_row = {
           "Waktu": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
           "Promotor": st.session_state["user_spg"],
@@ -1478,7 +1490,6 @@ if st.session_state["login_mode"] == "Supervisi":
   st.markdown("---")
   st.markdown(f"#### 📊 Rekapitulasi Combine Per Titik LKK ({st.session_state['user_spg']})")
   
-  # Grouping data SPG (Konsumen Beli & Omset Bungkus)
   df_rekap_spg = pd.DataFrame(columns=["Kecamatan", "Warkop_LKK", "Alamat_Warkop", "Jumlah_SPG_Bertugas", "Konsumen_Beli", "Total_Omset_Bungkus"])
   if not df_current_team_spg.empty:
     df_rekap_spg = (
@@ -1491,7 +1502,6 @@ if st.session_state["login_mode"] == "Supervisi":
         .reset_index()
     )
 
-  # Grouping data Supervisi (Kontak Konsumen Manual)
   df_rekap_sup = pd.DataFrame(columns=["Kecamatan", "Warkop_LKK", "Jumlah_Kontak_Manual"])
   if not df_current_team_sup.empty:
     df_rekap_sup = (
@@ -1500,7 +1510,6 @@ if st.session_state["login_mode"] == "Supervisi":
         .reset_index()
     )
 
-  # Merge rekap SPG dan rekap Supervisi
   if not df_rekap_spg.empty or not df_rekap_sup.empty:
     if df_rekap_spg.empty:
       df_combine_rekap = df_rekap_sup.copy()
@@ -1519,7 +1528,6 @@ if st.session_state["login_mode"] == "Supervisi":
           how="outer"
       ).fillna({"Jumlah_Kontak_Manual": 0, "Konsumen_Beli": 0, "Total_Omset_Bungkus": 0, "Jumlah_SPG_Bertugas": "-", "Alamat_Warkop": "-"})
 
-    # Susun urutan kolom yang rapi
     df_combine_rekap = df_combine_rekap[
         ["Kecamatan", "Warkop_LKK", "Alamat_Warkop", "Jumlah_SPG_Bertugas", "Jumlah_Kontak_Manual", "Konsumen_Beli", "Total_Omset_Bungkus"]
     ].sort_values(by="Total_Omset_Bungkus", ascending=False)
