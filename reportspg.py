@@ -122,7 +122,7 @@ st.markdown(
 # File database lokal agar data persisten
 DB_FILE = "rekap_laporan_spg.csv"
 MASTER_BRAND_FILE = "master_brand_rokok.json"
-MASTER_LOKASI_FILE = "Master WarkopLKK.xlsx"  # Diubah membaca langsung dari file Excel repository
+MASTER_LOKASI_FILE = "Master WarkopLKK.xlsx"
 MASTER_PLAT_FILE = "master_plat_kendaraan.json"
 MASTER_SPG_FILE = "master_nama_spg.json"
 
@@ -202,22 +202,15 @@ def save_master_brands(brands):
 
 
 def load_master_lokasi_excel():
-  """Membaca master warkop/LKK dari file Excel 'Master WarkopLKK.xlsx'.
-
-  Diharapkan file Excel memiliki kolom yang mengandung kata 'Kecamatan' dan
-  'Warkop' atau 'LKK' atau 'Nama'.
-  """
   if os.path.exists(MASTER_LOKASI_FILE):
     try:
       df_excel = pd.read_excel(MASTER_LOKASI_FILE)
-      # Normalisasi nama kolom menjadi lowercase untuk pencarian fleksibel
       df_excel.columns = [str(c).strip() for c in df_excel.columns]
       return df_excel
     except Exception as e:
       st.error(f"Gagal membaca file Excel {MASTER_LOKASI_FILE}: {e}")
       return pd.DataFrame(columns=["Kecamatan", "Warkop_LKK"])
   else:
-    # Fallback DataFrame kosong jika file belum ada
     return pd.DataFrame(
         columns=["Kecamatan", "Warkop_LKK"],
         data=[
@@ -228,7 +221,6 @@ def load_master_lokasi_excel():
 
 
 def save_master_lokasi_excel(df_excel):
-  """Menyimpan kembali DataFrame master warkop ke file Excel."""
   try:
     df_excel.to_excel(MASTER_LOKASI_FILE, index=False)
     return True
@@ -313,7 +305,6 @@ if "admin_logged_in" not in st.session_state:
 if "admin_view" not in st.session_state:
   st.session_state["admin_view"] = "Dashboard"
 
-# Inisialisasi state draft formulir agar aman saat tertutup/tidur
 if "draft_konsumen" not in st.session_state:
   st.session_state["draft_konsumen"] = ""
 if "draft_nohp" not in st.session_state:
@@ -499,8 +490,6 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
     )
 
     df_lokasi_excel = load_master_lokasi_excel()
-
-    # Identifikasi kolom secara fleksibel
     cols_available = df_lokasi_excel.columns.tolist()
     st.info(
         f"📁 Sumber file aktif: `{MASTER_LOKASI_FILE}` | Kolom terdeteksi:"
@@ -509,7 +498,6 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
 
     with st.form("form_tambah_lokasi_excel"):
       st.markdown("#### Tambah Baris Warkop / LKK Baru ke Excel")
-      # Cari kolom kecamatan & warkop di excel jika ada, atau sediakan input standar
       col_kec_input = st.text_input(
           "Kecamatan", placeholder="Contoh: Tegalsari"
       )
@@ -520,7 +508,6 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
 
       if btn_add_excel:
         if col_kec_input.strip() and col_warkop_input.strip():
-          # Cari nama kolom yang mirip untuk kecamatan dan warkop
           kec_col_name = next(
               (
                   c
@@ -560,7 +547,6 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
     st.markdown("---")
     st.markdown("#### 📋 Preview Data Warkop/LKK dari Excel")
     if not df_lokasi_excel.empty:
-      # Tampilkan tabel interaktif untuk melihat isi excel
       edited_df = st.data_editor(
           df_lokasi_excel, use_container_width=True, key="editor_excel_warkop"
       )
@@ -861,9 +847,10 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
 
   df_all_users = load_database()
   if not df_all_users.empty:
-    df_all_users["Tanggal"] = pd.to_datetime(
+    df_all_users["Waktu_Dt"] = pd.to_datetime(
         df_all_users["Waktu"], errors="coerce"
-    ).dt.date
+    )
+    df_all_users["Tanggal"] = df_all_users["Waktu_Dt"].dt.date
     df_all_users["Jumlah_Bungkus"] = pd.to_numeric(
         df_all_users["Jumlah_Bungkus"], errors="coerce"
     ).fillna(0)
@@ -927,8 +914,132 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
 
     st.markdown("---")
     st.markdown("#### 📑 Log Detail Transaksi All User")
+
+    # ====================================================
+    # MENU HAPUS LOG DETAIL TRANSAKSI ALL USER
+    # ====================================================
+    with st.expander("🗑️ Menu Hapus Log Detail Transaksi (Per Row / Hari / Minggu / All Data)", expanded=False):
+      st.warning("⚠️ Perhatian: Data yang sudah dihapus dari database tidak dapat dikembalikan.")
+      tab_del_row, tab_del_day, tab_del_week, tab_del_all = st.tabs([
+          "🔹 Hapus per Row",
+          "📅 Hapus per Hari",
+          "📆 Hapus per Minggu",
+          "🚨 Hapus All Data"
+      ])
+
+      # 1. HAPUS PER ROW
+      with tab_del_row:
+        df_indexed = df_all_users.reset_index()
+        opsi_rows = [
+            f"ID #{row['index']} | {row['Waktu']} | {row['Promotor']} ({row['Nama_SPG']}) - {row['Nama_Konsumen']} ({row['Brand_Rokok']}: {int(row['Jumlah_Bungkus'])} bks)"
+            for _, row in df_indexed.sort_values(by="Waktu", ascending=False).iterrows()
+        ]
+        selected_rows = st.multiselect(
+            "Pilih baris transaksi yang akan dihapus:",
+            options=opsi_rows,
+            key="ms_del_rows"
+        )
+        if st.button("🗑️ Hapus Baris Terpilih", type="primary", key="btn_del_row"):
+          if selected_rows:
+            indices_to_drop = [
+                int(item.split(" | ")[0].replace("ID #", ""))
+                for item in selected_rows
+            ]
+            df_clean = df_all_users.drop(index=indices_to_drop).drop(
+                columns=["Waktu_Dt", "Tanggal"], errors="ignore"
+            )
+            save_database(df_clean)
+            st.success(f"✅ Berhasil menghapus {len(indices_to_drop)} baris transaksi!")
+            st.rerun()
+          else:
+            st.warning("Silakan pilih minimal 1 baris transaksi terlebih dahulu.")
+
+      # 2. HAPUS PER HARI
+      with tab_del_day:
+        daftar_tanggal = sorted(
+            df_all_users["Tanggal"].dropna().unique().tolist(), reverse=True
+        )
+        if daftar_tanggal:
+          tgl_hapus = st.selectbox(
+              "Pilih Tanggal Transaksi yang akan dihapus:",
+              options=daftar_tanggal,
+              key="sb_del_day"
+          )
+          jml_data_hari = len(df_all_users[df_all_users["Tanggal"] == tgl_hapus])
+          st.info(f"Terdapat **{jml_data_hari} transaksi** pada tanggal **{tgl_hapus}**.")
+          if st.button(f"🗑️ Hapus Semua Data Tanggal {tgl_hapus}", type="primary", key="btn_del_day"):
+            df_clean = df_all_users[df_all_users["Tanggal"] != tgl_hapus].drop(
+                columns=["Waktu_Dt", "Tanggal"], errors="ignore"
+            )
+            save_database(df_clean)
+            st.success(f"✅ Seluruh data ({jml_data_hari} baris) pada tanggal {tgl_hapus} berhasil dihapus!")
+            st.rerun()
+        else:
+          st.info("Tidak ada data tanggal valid untuk dihapus.")
+
+      # 3. HAPUS PER MINGGU
+      with tab_del_week:
+        df_valid_dt = df_all_users.dropna(subset=["Waktu_Dt"]).copy()
+        if not df_valid_dt.empty:
+          iso_cal = df_valid_dt["Waktu_Dt"].dt.isocalendar()
+          df_valid_dt["Year_Week"] = (
+              iso_cal["year"].astype(str)
+              + "-W"
+              + iso_cal["week"].astype(str).str.zfill(2)
+          )
+          # Buat label rentang tanggal per minggu agar mudah dibaca admin
+          week_options = {}
+          for yw, group in df_valid_dt.groupby("Year_Week"):
+            min_d = group["Tanggal"].min()
+            max_d = group["Tanggal"].max()
+            label = f"{yw} ({min_d} s/d {max_d}) — {len(group)} transaksi"
+            week_options[label] = yw
+
+          sorted_week_labels = sorted(week_options.keys(), reverse=True)
+          pilih_minggu_label = st.selectbox(
+              "Pilih Minggu Transaksi yang akan dihapus:",
+              options=sorted_week_labels,
+              key="sb_del_week"
+          )
+          if st.button("🗑️ Hapus Semua Data Minggu Terpilih", type="primary", key="btn_del_week"):
+            target_yw = week_options[pilih_minggu_label]
+            # Tandai indeks yang cocok dengan minggu tersebut
+            iso_all = df_all_users["Waktu_Dt"].dt.isocalendar()
+            yw_series = (
+                iso_all["year"].astype(str)
+                + "-W"
+                + iso_all["week"].astype(str).str.zfill(2)
+            )
+            df_clean = df_all_users[yw_series != target_yw].drop(
+                columns=["Waktu_Dt", "Tanggal"], errors="ignore"
+            )
+            save_database(df_clean)
+            st.success(f"✅ Data pada minggu {target_yw} berhasil dihapus!")
+            st.rerun()
+        else:
+          st.info("Tidak ada data waktu valid untuk pengelompokan mingguan.")
+
+      # 4. HAPUS ALL DATA
+      with tab_del_all:
+        st.error(
+            f"🚨 Tindakan ini akan menghapus **SELURUH ({len(df_all_users)} baris)** data transaksi dari database secara permanen!"
+        )
+        konfirmasi_hapus_all = st.checkbox(
+            "Saya yakin ingin menghapus seluruh data transaksi.",
+            key="chk_del_all"
+        )
+        if st.button("🔥 KOSONGKAN SEMUA DATA TRANSAKSI", type="primary", key="btn_del_all"):
+          if konfirmasi_hapus_all:
+            df_empty = pd.DataFrame(columns=EXPECTED_COLUMNS)
+            save_database(df_empty)
+            st.success("✅ Seluruh database transaksi telah dikosongkan!")
+            st.rerun()
+          else:
+            st.warning("Centang kotak konfirmasi terlebih dahulu sebelum menghapus seluruh data.")
+
+    # Tampilkan Tabel Log Detail Transaksi
     st.dataframe(
-        df_all_users.drop(columns=["Tanggal"], errors="ignore").sort_values(
+        df_all_users.drop(columns=["Waktu_Dt", "Tanggal"], errors="ignore").sort_values(
             by="Waktu", ascending=False
         ),
         use_container_width=True,
@@ -1158,7 +1269,6 @@ df_master_excel = load_master_lokasi_excel()
 filtered_warkop_list = []
 
 if not df_master_excel.empty:
-  # Deteksi nama kolom kecamatan & warkop secara fleksibel pada file Excel
   col_kec_excel = next(
       (
           c
@@ -1177,7 +1287,6 @@ if not df_master_excel.empty:
   )
 
   if col_kec_excel and col_warkop_excel:
-    # Filter warkop berdasarkan kecamatan yang dipilih SPG (case-insensitive & strip)
     mask = (
         df_master_excel[col_kec_excel].astype(str).str.strip().str.lower()
         == str(kecamatan_pilihan).strip().lower()
@@ -1186,13 +1295,11 @@ if not df_master_excel.empty:
         df_master_excel[mask][col_warkop_excel].dropna().unique().tolist()
     )
 
-    # Jika tidak ada yang cocok persis, tampilkan seluruh warkop atau fallback
     if not filtered_warkop_list:
       filtered_warkop_list = (
           df_master_excel[col_warkop_excel].dropna().unique().tolist()
       )
   else:
-    # Jika struktur kolom tidak dikenali, ambil kolom pertama atau kedua
     filtered_warkop_list = (
         df_master_excel.iloc[:, -1].dropna().unique().tolist()
     )
@@ -1220,7 +1327,6 @@ if (
   )
   st.markdown("---")
 
-  # Fitur Draft Otomatis: Menyimpan nilai ke session_state agar aman jika HP tertutup
   with st.form("form_laporan_spg"):
     st.markdown(
         "### 📝 Form Input Laporan Konsumen &nbsp; `💾 Dilengkapi Auto-Draft`"
@@ -1323,7 +1429,6 @@ if (
         df_all = pd.concat([df_all, df_new_row], ignore_index=True)
         save_database(df_all)
 
-        # Reset draft setelah sukses terkirim
         st.session_state["draft_konsumen"] = ""
         st.session_state["draft_nohp"] = ""
         st.session_state["draft_ig"] = ""
