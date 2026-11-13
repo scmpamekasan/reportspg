@@ -270,15 +270,15 @@ def save_master_spgs(spgs):
     json.dump(spgs, f, ensure_ascii=False, indent=2)
 
 
-def get_kota_from_schedule(team_name):
-  """Mendeteksi kota operasional team berdasarkan Jadwal SPG.xlsx untuk hari ini secara akurat."""
+def get_schedule_info_for_team(team_name):
+  """Mengecek apakah team memiliki jadwal hari ini dan mengembalikan kota serta statusnya."""
   df_j = load_jadwal_spg()
   if df_j.empty:
-    return "Surabaya"  # Fallback default
+    return False, "Tidak Ada Jadwal Team Tersebut Untuk Hari Ini", "Surabaya"
   
   kota_col = next((c for c in df_j.columns if "kota" in c.lower()), None)
   if not kota_col:
-    return "Surabaya"
+    return False, "Tidak Ada Jadwal Team Tersebut Untuk Hari Ini", "Surabaya"
     
   today_date = datetime.now().date()
   today_col = None
@@ -292,22 +292,27 @@ def get_kota_from_schedule(team_name):
       continue
       
   if not today_col:
-    return "Surabaya"
+    return False, "Tidak Ada Jadwal Team Tersebut Untuk Hari Ini", "Surabaya"
     
   team_clean = team_name.strip().lower()
   team_digit = ''.join(filter(str.isdigit, team_clean))
   
+  found_kota = None
   for _, row in df_j.iterrows():
     val_cell = str(row[today_col]).strip()
     if val_cell and val_cell.lower() != "nan" and val_cell != "-":
       val_lower = val_cell.lower()
       cell_digit = ''.join(filter(str.isdigit, val_lower))
       if team_clean == val_lower or (team_digit and cell_digit and team_digit == cell_digit and len(team_digit) == len(cell_digit)):
-        found_kota = str(row[kota_col]).strip()
-        if found_kota:
-          return found_kota
+        temp_kota = str(row[kota_col]).strip()
+        if temp_kota:
+          found_kota = temp_kota
+          break
           
-  return "Surabaya"  # Fallback jika tidak ditemukan
+  if found_kota:
+    return True, "", found_kota
+  else:
+    return False, "Tidak Ada Jadwal Team Tersebut Untuk Hari Ini", "Surabaya"
 
 
 # ====================================================
@@ -1104,7 +1109,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
   st.stop()
 
 # ====================================================
-# HALAMAN LOGIN UTAMA (DENGAN REFRESH REAL-TIME SELECTBOX)
+# HALAMAN LOGIN UTAMA (DENGAN VALIDASI JADWAL HARI INI)
 # ====================================================
 if not st.session_state["logged_in"]:
   _, col_center, _ = st.columns([0.05, 0.9, 0.05])
@@ -1121,25 +1126,30 @@ if not st.session_state["logged_in"]:
         unsafe_allow_html=True,
     )
 
-    # Menggunakan st.container / form interaktif di luar form statis murni
-    # agar preview kota langsung merefresh saat pilihan team diganti.
     st.markdown("#### 🚀 Masuk ke Akun Operasional")
     st.caption("Pilih tim (1-20). Wilayah operasional akan otomatis terdeteksi sesuai jadwal.")
 
     list_spg = [f"Team SPG {i}" for i in range(1, 21)]
-    
-    # Menambahkan key agar state selectbox terpantau langsung
     pilihan_user = st.selectbox("👤 Pilih User (Team SPG)", list_spg, key="selected_team_login")
 
-    # Deteksi otomatis kota berdasarkan jadwal hari ini secara real-time saat selectbox berubah
-    auto_detected_kota = get_kota_from_schedule(pilihan_user)
-    st.info(f"🏙️ Wilayah Terdeteksi dari Jadwal Hari Ini: **{auto_detected_kota}**")
+    # Cek jadwal & status hari ini secara real-time
+    has_schedule, schedule_warning_msg, auto_detected_kota = get_schedule_info_for_team(pilihan_user)
 
-    if st.button("Masuk Aplikasi", type="primary", use_container_width=True):
-      st.session_state["logged_in"] = True
-      st.session_state["user_spg"] = pilihan_user
-      st.session_state["kota_kab"] = auto_detected_kota
-      st.rerun()
+    if not has_schedule:
+      st.error(f"⚠️ **Tidak Ada Jadwal Team Tersebut Untuk Hari Ini**")
+    else:
+      st.info(f"🏙️ Wilayah Terdeteksi dari Jadwal Hari Ini: **{auto_detected_kota}**")
+
+    btn_login = st.button("Masuk Aplikasi", type="primary", use_container_width=True)
+
+    if btn_login:
+      if not has_schedule:
+        st.error("❌ Akses ditolak: Tidak Ada Jadwal Team Tersebut Untuk Hari Ini.")
+      else:
+        st.session_state["logged_in"] = True
+        st.session_state["user_spg"] = pilihan_user
+        st.session_state["kota_kab"] = auto_detected_kota
+        st.rerun()
 
     st.markdown(
         """
@@ -1336,7 +1346,7 @@ if not df_jadwal_raw.empty:
         
         if val_jadwal == "" or val_jadwal.lower() == "nan" or val_jadwal == "-":
           is_scheduled_today = False
-          schedule_check_msg = f"❌ Tidak ada jadwal penugasan untuk {st.session_state['user_spg']} di Kecamatan {kecamatan_pilihan} pada tanggal hari ini ({today_date})."
+          schedule_check_msg = f"❌ Tidak Ada Jadwal Team Tersebut Untuk Hari Ini di Kecamatan {kecamatan_pilihan}."
         elif user_team_str not in val_jadwal_lower and "team" in user_team_str and "team" not in val_jadwal_lower:
           team_digit = ''.join(filter(str.isdigit, user_team_str))
           excel_digit = ''.join(filter(str.isdigit, val_jadwal_lower))
@@ -1345,11 +1355,11 @@ if not df_jadwal_raw.empty:
             schedule_check_msg = f"❌ Jadwal di Kecamatan {kecamatan_pilihan} pada tanggal {today_date} ditugaskan untuk **{val_jadwal}**, bukan untuk {st.session_state['user_spg']}."
       else:
         is_scheduled_today = False
-        schedule_check_msg = f"❌ Kecamatan {kecamatan_pilihan} tidak terdaftar dalam jadwal operasional untuk wilayah {st.session_state['kota_kab']}."
+        schedule_check_msg = f"❌ Tidak Ada Jadwal Team Tersebut Untuk Hari Ini di wilayah {st.session_state['kota_kab']}."
 
 if not is_scheduled_today:
   st.error(
-      f"🚨 **Akses Masuk Form Dikunci (Sesuai Jadwal SPG.xlsx):**\n\n"
+      f"🚨 **Akses Masuk Form Dikunci:**\n\n"
       f"{schedule_check_msg}\n\n"
       "⚠️ Anda tidak dapat melakukan entry laporan pada kecamatan atau jadwal ini karena tidak sesuai dengan data penugasan resmi."
   )
@@ -1552,7 +1562,7 @@ else:
         f" {st.session_state['kota_kab']}."
     )
   elif not is_scheduled_today:
-    st.warning("🔒 Form input dikunci karena Anda tidak memiliki jadwal tugas di wilayah/tanggal ini.")
+    st.warning("🔒 Form input dikunci karena Tidak Ada Jadwal Team Tersebut Untuk Hari Ini.")
   else:
     st.info(
         "ℹ️ Silakan pilih **Nama SPG** dan pastikan **Warkop/LKK** terpilih untuk"
