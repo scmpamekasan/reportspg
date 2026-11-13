@@ -271,7 +271,7 @@ def save_master_spgs(spgs):
 
 
 def get_kota_from_schedule(team_name):
-  """Mendeteksi kota operasional team berdasarkan Jadwal SPG.xlsx untuk hari ini."""
+  """Mendeteksi kota operasional team berdasarkan Jadwal SPG.xlsx untuk hari ini secara akurat."""
   df_j = load_jadwal_spg()
   if df_j.empty:
     return "Surabaya"  # Fallback default
@@ -302,7 +302,8 @@ def get_kota_from_schedule(team_name):
     if val_cell and val_cell.lower() != "nan" and val_cell != "-":
       val_lower = val_cell.lower()
       cell_digit = ''.join(filter(str.isdigit, val_lower))
-      if team_clean in val_lower or (team_digit and cell_digit and team_digit == cell_digit):
+      # Cocokkan persis string team atau angka team secara tepat
+      if team_clean == val_lower or (team_digit and cell_digit and team_digit == cell_digit and len(team_digit) == len(cell_digit)):
         found_kota = str(row[kota_col]).strip()
         if found_kota:
           return found_kota
