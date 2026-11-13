@@ -188,12 +188,6 @@ def get_custom_week_info(dt):
   d = pd.to_datetime(dt).date()
   wd = d.weekday()  # Mon=0, Tue=1, Wed=2, Thu=3, Fri=4, Sat=5, Sun=6
 
-  # Jika hari Sabtu (5) atau Minggu (6), geser ke hari Jumat di minggu tersebut atau hitung relatif
-  # Alternatif paling presisi untuk siklus Sabtu s.d. Jumat:
-  # Tentukan hari Jumat terdekat atau tanggal referensi.
-  # Jika d adalah Sabtu (5), Jumatnya adalah d + 6 hari.
-  # Jika d adalah Minggu (6), Jumatnya adalah d + 5 hari.
-  # Jika d adalah Senin-Jumat (0-4), Jumatnya adalah d + (4 - wd) hari.
   if wd == 5:  # Sabtu
     fri_date = d + timedelta(days=6)
   elif wd == 6:  # Minggu
@@ -1214,6 +1208,9 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
       )
 
     # Opsi Filter Global untuk Dashboard Admin
+    all_weeks_admin = sorted(
+        df_all_users["Periode_Minggu"].dropna().unique().tolist(), reverse=True
+    )
     all_dates_admin = sorted(
         df_all_users["Tanggal"].dropna().unique().tolist(), reverse=True
     )
@@ -1225,15 +1222,22 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
     st.markdown("---")
     st.markdown("### 🏆 Leaderboard Team SPG (Berdasarkan Target Team)")
 
-    col_lb_a, col_lb_b = st.columns(2)
-    with col_lb_a:
+    col_lb_w, col_lb_tgl, col_lb_team = st.columns(3)
+    with col_lb_w:
+      filter_lb_week = st.multiselect(
+          "Filter Periode Minggu (Leaderboard)",
+          options=all_weeks_admin,
+          default=all_weeks_admin,
+          key="admin_lb_week",
+      )
+    with col_lb_tgl:
       filter_lb_tgl = st.multiselect(
           "Filter Tanggal (Leaderboard)",
           options=all_dates_admin,
           default=all_dates_admin,
           key="admin_lb_tgl",
       )
-    with col_lb_b:
+    with col_lb_team:
       filter_lb_team = st.multiselect(
           "Filter Team SPG (Leaderboard)",
           options=all_teams_admin,
@@ -1242,6 +1246,10 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
       )
 
     df_lb_filtered = df_all_users.copy()
+    if filter_lb_week:
+      df_lb_filtered = df_lb_filtered[
+          df_lb_filtered["Periode_Minggu"].isin(filter_lb_week)
+      ]
     if filter_lb_tgl:
       df_lb_filtered = df_lb_filtered[
           df_lb_filtered["Tanggal"].isin(filter_lb_tgl)
@@ -1340,7 +1348,14 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
     st.markdown("---")
     st.markdown("### 🚬 Jumlah Rokok Laku Per SPG dan Per Merk")
 
-    col_rk1, col_rk2, col_rk3 = st.columns(3)
+    col_rk_w, col_rk1, col_rk2, col_rk3 = st.columns(4)
+    with col_rk_w:
+      filter_rk_week = st.multiselect(
+          "Filter Minggu (Rokok Laku)",
+          options=all_weeks_admin,
+          default=all_weeks_admin,
+          key="admin_rk_week",
+      )
     with col_rk1:
       filter_rk_tgl = st.multiselect(
           "Filter Tanggal (Rokok Laku)",
@@ -1364,6 +1379,10 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
       )
 
     df_rk_filtered = df_all_users.copy()
+    if filter_rk_week:
+      df_rk_filtered = df_rk_filtered[
+          df_rk_filtered["Periode_Minggu"].isin(filter_rk_week)
+      ]
     if filter_rk_tgl:
       df_rk_filtered = df_rk_filtered[
           df_rk_filtered["Tanggal"].isin(filter_rk_tgl)
@@ -1401,7 +1420,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
       st.info("Tidak ada data untuk filter Rokok Laku yang dipilih.")
 
   # ====================================================
-  # REPORT REKAPITULASI COMBINE PER TITIK LKK (ADMIN) + FILTER TANGGAL & TEAM
+  # REPORT REKAPITULASI COMBINE PER TITIK LKK (ADMIN) + FILTER MINGGU, TANGGAL & TEAM
   # ====================================================
   st.markdown("---")
   st.markdown("### 📊 Rekapitulasi Combine Per Titik LKK (All Team)")
@@ -1424,7 +1443,18 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
         .astype(int)
     )
 
-  # Ambil semua tanggal unik dari SPG & Supervisi
+  weeks_spg = (
+      df_all_users["Periode_Minggu"].dropna().unique().tolist()
+      if not df_all_users.empty
+      else []
+  )
+  weeks_sup = (
+      df_all_supervisi["Periode_Minggu"].dropna().unique().tolist()
+      if not df_all_supervisi.empty
+      else []
+  )
+  all_weeks_lkk = sorted(list(set(weeks_spg + weeks_sup)), reverse=True)
+
   dates_spg = (
       df_all_users["Tanggal"].dropna().unique().tolist()
       if not df_all_users.empty
@@ -1449,7 +1479,14 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
   )
   all_teams_lkk = sorted(list(set(teams_spg + teams_sup)))
 
-  col_lkk_f1, col_lkk_f2 = st.columns(2)
+  col_lkk_f0, col_lkk_f1, col_lkk_f2 = st.columns(3)
+  with col_lkk_f0:
+    filter_lkk_week = st.multiselect(
+        "Filter Periode Minggu (Rekap LKK)",
+        options=all_weeks_lkk,
+        default=all_weeks_lkk,
+        key="admin_lkk_week",
+    )
   with col_lkk_f1:
     filter_lkk_tgl = st.multiselect(
         "Filter Tanggal (Rekap Titik LKK)",
@@ -1468,6 +1505,10 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
   df_spg_lkk_filtered = df_all_users.copy()
   df_sup_lkk_filtered = df_all_supervisi.copy()
 
+  if filter_lkk_week and not df_spg_lkk_filtered.empty:
+    df_spg_lkk_filtered = df_spg_lkk_filtered[
+        df_spg_lkk_filtered["Periode_Minggu"].isin(filter_lkk_week)
+    ]
   if filter_lkk_tgl and not df_spg_lkk_filtered.empty:
     df_spg_lkk_filtered = df_spg_lkk_filtered[
         df_spg_lkk_filtered["Tanggal"].isin(filter_lkk_tgl)
@@ -1477,6 +1518,10 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
         df_spg_lkk_filtered["Promotor"].isin(filter_lkk_team)
     ]
 
+  if filter_lkk_week and not df_sup_lkk_filtered.empty:
+    df_sup_lkk_filtered = df_sup_lkk_filtered[
+        df_sup_lkk_filtered["Periode_Minggu"].isin(filter_lkk_week)
+    ]
   if filter_lkk_tgl and not df_sup_lkk_filtered.empty:
     df_sup_lkk_filtered = df_sup_lkk_filtered[
         df_sup_lkk_filtered["Tanggal"].isin(filter_lkk_tgl)
@@ -1940,8 +1985,8 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
             ].drop(columns=["Waktu_Dt"], errors="ignore")
             save_database(df_clean)
             st.success(
-                "✅ Data pada periode minggu {pilih_minggu_label} berhasil"
-                " dihapus!"
+                "✅ Data pada periode minggu"
+                f" `{pilih_minggu_label}` berhasil dihapus!"
             )
             st.rerun()
         else:
@@ -2742,10 +2787,28 @@ if not df_user_rekap.empty:
   df_user_rekap = add_custom_week_columns(df_user_rekap, "Waktu_Dt")
   df_user_rekap["Nama_SPG"] = df_user_rekap["Nama_SPG"].fillna("-")
 
+  # Tambahan Filter Minggu pada Tampilan Evaluasi User SPG
+  all_weeks_user = sorted(
+      df_user_rekap["Periode_Minggu"].dropna().unique().tolist(), reverse=True
+  )
+  selected_user_weeks = st.multiselect(
+      "Filter Periode Minggu (Evaluasi Anda)",
+      options=all_weeks_user,
+      default=all_weeks_user,
+      key="spg_user_week_filter",
+  )
+
+  if selected_user_weeks:
+    df_user_rekap_filtered = df_user_rekap[
+        df_user_rekap["Periode_Minggu"].isin(selected_user_weeks)
+    ]
+  else:
+    df_user_rekap_filtered = df_user_rekap.copy()
+
   st.markdown("#### 📋 Tabel Evaluasi Harian Per SPG (Berdasarkan Target SPG)")
 
   df_eval_spg = (
-      df_user_rekap.groupby(
+      df_user_rekap_filtered.groupby(
           ["Tanggal", "Periode_Minggu", "Nama_SPG", "Brand_Rokok"]
       )
       .agg(
@@ -2821,11 +2884,13 @@ if not df_user_rekap.empty:
 
   cols_to_drop_spg = (
       ["Plat_Mobil", "Waktu_Dt"]
-      if "Plat_Mobil" in df_user_rekap.columns
+      if "Plat_Mobil" in df_user_rekap_filtered.columns
       else ["Waktu_Dt"]
   )
   st.dataframe(
-      df_user_rekap.drop(columns=cols_to_drop_spg, errors="ignore"),
+      df_user_rekap_filtered.drop(
+          columns=cols_to_drop_spg, errors="ignore"
+      ),
       use_container_width=True,
   )
 
@@ -2834,9 +2899,9 @@ if not df_user_rekap.empty:
     df_eval_spg.to_excel(
         writer, index=False, sheet_name="Evaluasi Harian SPG"
     )
-    df_user_rekap.drop(columns=["Waktu_Dt"], errors="ignore").to_excel(
-        writer, index=False, sheet_name="Detail Transaksi"
-    )
+    df_user_rekap_filtered.drop(
+        columns=["Waktu_Dt"], errors="ignore"
+    ).to_excel(writer, index=False, sheet_name="Detail Transaksi")
 
   st.download_button(
       label=f"📥 Download Rekap Excel (.xlsx) - {st.session_state['user_spg']}",
