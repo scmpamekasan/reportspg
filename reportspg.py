@@ -345,6 +345,9 @@ if not st.session_state["logged_in"]:
       if st.button("📊 Analitik & Rekap All", use_container_width=True):
         st.session_state["admin_view"] = "Analitik"
         st.rerun()
+      if st.button("🗺️ Peta Rute All User", use_container_width=True):
+        st.session_state["admin_view"] = "Peta_Rute"
+        st.rerun()
 
       st.markdown("---")
       if st.button("🔒 Keluar dari Mode Admin", use_container_width=True):
@@ -625,6 +628,117 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
       st.rerun()
     st.stop()
 
+  # --- TAMPILAN 6: PETA RUTE ALL USER (DENGAN FILTER TEAM, SPG, & TANGGAL) ---
+  elif st.session_state["admin_view"] == "Peta_Rute":
+    st.markdown("## 🗺️ Visualisasi Peta Rute Perjalanan (All User)")
+    st.caption(
+        "Pantau rute dan titik kunjungan lapangan berdasarkan filter Team SPG,"
+        " Nama SPG, dan Tanggal."
+    )
+
+    df_peta_all = load_database()
+    if not df_peta_all.empty and "Latitude" in df_peta_all.columns:
+      df_peta_all["Waktu_Dt"] = pd.to_datetime(
+          df_peta_all["Waktu"], errors="coerce"
+      )
+      df_peta_all["Tanggal"] = df_peta_all["Waktu_Dt"].dt.date
+      df_peta_all = df_peta_all.dropna(subset=["Latitude", "Longitude"])
+
+      col_p1, col_p2, col_p3 = st.columns(3)
+      with col_p1:
+        list_team_filter = ["Semua Team"] + sorted(
+            df_peta_all["Promotor"].dropna().unique().tolist()
+        )
+        pilih_team = st.selectbox("Filter Team SPG", list_team_filter)
+
+      with col_p2:
+        list_spg_filter = ["Semua SPG"] + sorted(
+            df_peta_all["Nama_SPG"].dropna().unique().tolist()
+        )
+        pilih_spg = st.selectbox("Filter Nama SPG", list_spg_filter)
+
+      with col_p3:
+        list_tgl_filter = ["Semua Tanggal"] + sorted(
+            df_peta_all["Tanggal"].dropna().unique().tolist(), reverse=True
+        )
+        pilih_tgl = st.selectbox("Filter Tanggal", list_tgl_filter)
+
+      df_filtered_map = df_peta_all.copy()
+      if pilih_team != "Semua Team":
+        df_filtered_map = df_filtered_map[
+            df_filtered_map["Promotor"] == pilih_team
+        ]
+      if pilih_spg != "Semua SPG":
+        df_filtered_map = df_filtered_map[
+            df_filtered_map["Nama_SPG"] == pilih_spg
+        ]
+      if pilih_tgl != "Semua Tanggal":
+        df_filtered_map = df_filtered_map[
+            df_filtered_map["Tanggal"] == pilih_tgl
+        ]
+
+      if not df_filtered_map.empty:
+        df_filtered_map = df_filtered_map.sort_values("Waktu")
+        koordinat_rute = df_filtered_map[
+            ["Longitude", "Latitude"]
+        ].values.tolist()
+        center_lat = df_filtered_map["Latitude"].mean()
+        center_lon = df_filtered_map["Longitude"].mean()
+
+        path_layer = pdk.Layer(
+            "PathLayer",
+            data=[{"path": koordinat_rute, "name": "Rute Perjalanan"}],
+            get_path="path",
+            get_color=[211, 47, 47, 200],
+            get_width=6,
+            pickable=True,
+        )
+
+        scatter_layer = pdk.Layer(
+            "ScatterplotLayer",
+            data=df_filtered_map,
+            get_position=["Longitude", "Latitude"],
+            get_color=[0, 128, 255, 200],
+            get_radius=60,
+            pickable=True,
+        )
+
+        view_state = pdk.ViewState(
+            latitude=center_lat, longitude=center_lon, zoom=12, pitch=35
+        )
+
+        deck_map = pdk.Deck(
+            layers=[path_layer, scatter_layer],
+            initial_view_state=view_state,
+            tooltip={
+                "html": (
+                    "<b>Team:</b> {Promotor} ({Nama_SPG})<br/><b>Warkop:</b>"
+                    " {Warkop_LKK} ({Kecamatan})<br/><b>Brand:</b>"
+                    " {Brand_Rokok} ({Jumlah_Bungkus} bks)<br/><b>Waktu:</b>"
+                    " {Waktu}"
+                ),
+                "style": {"backgroundColor": "#1e293b", "color": "white"},
+            },
+        )
+
+        st.pydeck_chart(deck_map)
+        st.info(
+            "💡 Garis merah menunjukkan rute perjalanan, sedangkan titik biru"
+            " menunjukkan titik warkop kunjungan."
+        )
+      else:
+        st.warning(
+            "Tidak ada data koordinat yang cocok dengan filter yang dipilih."
+        )
+    else:
+      st.info("Belum ada data koordinat GPS yang terekam pada sistem.")
+
+    st.markdown("---")
+    if st.button("⬅️ Kembali ke Dashboard"):
+      st.session_state["admin_view"] = "Dashboard"
+      st.rerun()
+    st.stop()
+
   # --- TAMPILAN UTAMA: DASHBOARD ADMIN BERGAYA KARTU ---
   st.markdown("## 📊 Dashboard Admin & Manajemen Lapangan")
   st.caption(
@@ -661,18 +775,23 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
       st.rerun()
 
   st.markdown("---")
-  st.markdown("#### 📈 Analitik & Performa")
-  col_a1, col_a2 = st.columns(2)
+  st.markdown("#### 📈 Analitik & Pemetaan")
+  col_a1, col_a2, col_a3 = st.columns(3)
   with col_a1:
     if st.button(
-        "📊 Analitik Lapangan\nDemografi, Regional & Kecamatan",
-        use_container_width=True,
+        "📊 Analitik Lapangan\nDemografi & Kecamatan", use_container_width=True
     ):
       st.session_state["admin_view"] = "Analitik"
       st.rerun()
   with col_a2:
     if st.button(
-        "⬅️ Kembali ke Menu Login Utama",
+        "🗺️ Peta Rute All User\nFilter Team/SPG/Tanggal", use_container_width=True
+    ):
+      st.session_state["admin_view"] = "Peta_Rute"
+      st.rerun()
+  with col_a3:
+    if st.button(
+        "⬅️ Keluar Admin",
         use_container_width=True,
     ):
       st.session_state["admin_logged_in"] = False
