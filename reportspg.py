@@ -206,7 +206,7 @@ if not st.session_state["logged_in"]:
     if not st.session_state["admin_logged_in"]:
       with st.form("form_admin_login"):
         pass_input = st.text_input(
-            "Password Admin", type="password", placeholder="admin123"
+            "Password Admin", type="password"
         )
         btn_pass = st.form_submit_button("Buka Rekap All User")
 
