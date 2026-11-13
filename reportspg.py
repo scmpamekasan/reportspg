@@ -946,7 +946,7 @@ if not st.session_state["logged_in"]:
         """
         <div class="footer-note">
             Gunakan sidebar kiri untuk masuk ke menu <b>Dashboard Admin.<br/>
-            © 2026 Field Force Monitoring System
+            © 2026 Tumarso Monitoring System
         </div>
         """,
         unsafe_allow_html=True,
