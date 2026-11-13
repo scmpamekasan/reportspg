@@ -302,7 +302,6 @@ def get_kota_from_schedule(team_name):
     if val_cell and val_cell.lower() != "nan" and val_cell != "-":
       val_lower = val_cell.lower()
       cell_digit = ''.join(filter(str.isdigit, val_lower))
-      # Cocokkan persis string team atau angka team secara tepat
       if team_clean == val_lower or (team_digit and cell_digit and team_digit == cell_digit and len(team_digit) == len(cell_digit)):
         found_kota = str(row[kota_col]).strip()
         if found_kota:
@@ -1105,7 +1104,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
   st.stop()
 
 # ====================================================
-# HALAMAN LOGIN UTAMA (TANPA PASSWORD USER)
+# HALAMAN LOGIN UTAMA (DENGAN REFRESH REAL-TIME SELECTBOX)
 # ====================================================
 if not st.session_state["logged_in"]:
   _, col_center, _ = st.columns([0.05, 0.9, 0.05])
@@ -1122,26 +1121,25 @@ if not st.session_state["logged_in"]:
         unsafe_allow_html=True,
     )
 
-    with st.form("form_login"):
-      st.markdown("#### 🚀 Masuk ke Akun Operasional")
-      st.caption(
-          "Pilih tim (1-20). Wilayah operasional akan otomatis terdeteksi sesuai jadwal."
-      )
+    # Menggunakan st.container / form interaktif di luar form statis murni
+    # agar preview kota langsung merefresh saat pilihan team diganti.
+    st.markdown("#### 🚀 Masuk ke Akun Operasional")
+    st.caption("Pilih tim (1-20). Wilayah operasional akan otomatis terdeteksi sesuai jadwal.")
 
-      list_spg = [f"Team SPG {i}" for i in range(1, 21)]
-      pilihan_user = st.selectbox("👤 Pilih User (Team SPG)", list_spg)
+    list_spg = [f"Team SPG {i}" for i in range(1, 21)]
+    
+    # Menambahkan key agar state selectbox terpantau langsung
+    pilihan_user = st.selectbox("👤 Pilih User (Team SPG)", list_spg, key="selected_team_login")
 
-      # Deteksi otomatis kota berdasarkan jadwal hari ini untuk preview info login
-      auto_detected_kota = get_kota_from_schedule(pilihan_user)
-      st.info(f"🏙️ Wilayah Terdeteksi dari Jadwal Hari Ini: **{auto_detected_kota}**")
+    # Deteksi otomatis kota berdasarkan jadwal hari ini secara real-time saat selectbox berubah
+    auto_detected_kota = get_kota_from_schedule(pilihan_user)
+    st.info(f"🏙️ Wilayah Terdeteksi dari Jadwal Hari Ini: **{auto_detected_kota}**")
 
-      btn_login = st.form_submit_button("Masuk Aplikasi", type="primary")
-
-      if btn_login:
-        st.session_state["logged_in"] = True
-        st.session_state["user_spg"] = pilihan_user
-        st.session_state["kota_kab"] = auto_detected_kota
-        st.rerun()
+    if st.button("Masuk Aplikasi", type="primary", use_container_width=True):
+      st.session_state["logged_in"] = True
+      st.session_state["user_spg"] = pilihan_user
+      st.session_state["kota_kab"] = auto_detected_kota
+      st.rerun()
 
     st.markdown(
         """
