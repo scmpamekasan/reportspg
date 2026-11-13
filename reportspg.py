@@ -305,16 +305,18 @@ TARGET_RULES = {
     "D.76 Apel Royal": {"target_spg": 40, "target_team": 80},
     "D.76 Apel": {"target_spg": 30, "target_team": 60},
     "Djarum 76 Aksara": {"target_spg": 30, "target_team": 60},
+    "Black Matcha Siro": {"target_spg": 20, "target_team": 80},
+    "Black Matcha Kuro": {"target_spg": 20, "target_team": 80},
 }
 
 
 def cek_status_target_spg(brand, omset_spg):
-  rule = TARGET_RULES.get(brand, {"target_spg": 25, "target_team": 50})
+  rule = TARGET_RULES.get(brand, {"target_spg": 20, "target_team": 80})
   return "Achieved" if omset_spg >= rule["target_spg"] else "Not Achieved"
 
 
 def cek_status_target_team(brand, omset_team):
-  rule = TARGET_RULES.get(brand, {"target_spg": 25, "target_team": 50})
+  rule = TARGET_RULES.get(brand, {"target_spg": 20, "target_team": 80})
   return "Achieved" if omset_team >= rule["target_team"] else "Not Achieved"
 
 
