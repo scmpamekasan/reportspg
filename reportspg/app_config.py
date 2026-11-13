@@ -3,7 +3,7 @@ from pathlib import Path
 
 # Lokasi file data relatif terhadap folder aplikasi,
 # agar tidak bergantung pada working directory saat aplikasi dijalankan.
-BASE_DIR = Path(__file__).resolve().parent
+BASE_DIR = Path(__file__).resolve().parent.parent
 
 DB_FILE = BASE_DIR / "rekap_laporan_spg.csv"
 DB_SUPERVISI_KONTAK_FILE = BASE_DIR / "rekap_kontak_supervisi.csv"
