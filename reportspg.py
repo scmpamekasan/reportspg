@@ -20,14 +20,14 @@ st.set_page_config(
 )
 
 # ====================================================
-# CUSTOM CSS UNTUK UI MODERN & KPI CARD SEPERTI GAMBAR
+# CUSTOM CSS UNTUK UI MODERN (BACKGROUND KREM & CARD RAPI)
 # ====================================================
 st.markdown(
     """
     <style>
     .stApp {
-        background-color: #FDFBF7;
-        color: #333333;
+        background-color: #FDFBF7; /* Warna latar belakang krem lembut */
+        color: #334155;
     }
     .login-header {
         background: linear-gradient(135deg, #d32f2f 0%, #b71c1c 100%);
@@ -50,11 +50,11 @@ st.markdown(
         opacity: 0.9;
     }
     [data-testid="stForm"] {
-        background-color: #161b22;
+        background-color: #ffffff;
         padding: 26px 24px;
         border-radius: 16px;
-        border: 1px solid #30363d;
-        box-shadow: 0 6px 18px rgba(0, 0, 0, 0.2);
+        border: 1px solid #e2e8f0;
+        box-shadow: 0 6px 18px rgba(0, 0, 0, 0.05);
     }
     [data-testid="stFormSubmitButton"] > button {
         width: 100%;
@@ -90,66 +90,72 @@ st.markdown(
         color: #cbd5e1;
     }
     
-    /* KPI Card Style Sesuai Gambar Referensi */
+    /* KPI Card Style Rapi & Seragam */
     .dashboard-card {
-        background-color: #161b22;
-        border: 1px solid #30363d;
-        padding: 22px;
-        border-radius: 16px;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-        margin-bottom: 16px;
+        background-color: #ffffff;
+        border: 1px solid #e2e8f0;
+        padding: 20px 18px;
+        border-radius: 14px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.04);
+        margin-bottom: 14px;
+        min-height: 145px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
     }
     .card-value {
-        font-size: 2.2rem;
+        font-size: 1.9rem;
         font-weight: 800;
-        color: #ffffff;
-        margin-bottom: 4px;
-        line-height: 1.2;
+        color: #1e293b;
+        margin-bottom: 2px;
+        line-height: 1.1;
     }
     .card-value-green {
-        font-size: 2.2rem;
+        font-size: 1.9rem;
         font-weight: 800;
-        color: #2ea043;
-        margin-bottom: 4px;
-        line-height: 1.2;
+        color: #16a34a;
+        margin-bottom: 2px;
+        line-height: 1.1;
     }
     .card-subtext {
-        font-size: 0.9rem;
-        color: #8b949e;
-        margin-bottom: 8px;
+        font-size: 0.85rem;
+        color: #64748b;
+        margin-bottom: 6px;
     }
     .card-label {
-        font-size: 1.05rem;
-        color: #c9d1d9;
+        font-size: 0.95rem;
+        color: #475569;
         font-weight: 600;
+        line-height: 1.3;
     }
     .progress-bar-container {
         width: 100%;
-        background-color: #30363d;
+        background-color: #f1f5f9;
         border-radius: 6px;
         height: 8px;
-        margin: 12px 0 8px 0;
+        margin: 10px 0 6px 0;
         overflow: hidden;
     }
     .progress-bar-fill {
         height: 100%;
-        background-color: #2ea043;
+        background-color: #16a34a;
         border-radius: 6px;
     }
 
     .footer-note {
         text-align: center;
         font-size: 0.8rem;
-        color: #8b949e;
+        color: #64748b;
         margin-top: 18px;
     }
     .address-box {
-        background-color: #161b22;
+        background-color: #ffffff;
+        border: 1px solid #e2e8f0;
         border-left: 4px solid #3b82f6;
         padding: 10px 14px;
         border-radius: 8px;
         font-size: 0.9rem;
-        color: #c9d1d9;
+        color: #334155;
         margin-top: 6px;
         margin-bottom: 14px;
     }
@@ -1209,7 +1215,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
     omset_hari_ini = int(df_today["Jumlah_Bungkus"].sum())
     konsumen_hari_ini = len(df_today)
 
-    # Hitung Target Harian otomatis berdasarkan jumlah brand/SPG atau default target team
+    # Hitung Target Harian otomatis berdasarkan jumlah team aktif atau default
     target_hari_ini = max(1, len(df_today["Promotor"].unique()) * 80) if not df_today.empty else 100
     persen_pencapaian = int((omset_hari_ini / target_hari_ini) * 100) if target_hari_ini > 0 else 0
 
@@ -1222,14 +1228,16 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
     omset_bulan_ini = int(df_month["Jumlah_Bungkus"].sum())
     konsumen_bulan_ini = len(df_month)
 
-    # Baris 1: Omset Hari Ini, Pencapaian Omset Hari Ini, Konsumen Beli Hari Ini
+    # Baris 1: Omset Hari Ini, Pencapaian Omset Hari Ini, Konsumen Beli Hari Ini (Grid 3 Kolom Rapi)
     kpi_col1, kpi_col2, kpi_col3 = st.columns(3)
     with kpi_col1:
       st.markdown(
           f"""
           <div class="dashboard-card">
-              <div class="card-value">{omset_hari_ini:,} bks</div>
-              <div class="card-subtext">dari {target_hari_ini} target bks</div>
+              <div>
+                  <div class="card-value">{omset_hari_ini:,} bks</div>
+                  <div class="card-subtext">dari {target_hari_ini} target bks</div>
+              </div>
               <div class="card-label">Omset Hari Ini</div>
           </div>
           """,
@@ -1240,11 +1248,13 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
       st.markdown(
           f"""
           <div class="dashboard-card">
-              <div class="card-value-green">{persen_pencapaian}%</div>
-              <div class="progress-bar-container">
-                  <div class="progress-bar-fill" style="width: {bar_width}%;"></div>
+              <div>
+                  <div class="card-value-green">{persen_pencapaian}%</div>
+                  <div class="progress-bar-container">
+                      <div class="progress-bar-fill" style="width: {bar_width}%;"></div>
+                  </div>
               </div>
-              <div class="card-label" style="margin-top: 4px;">Pencapaian Omset Hari Ini</div>
+              <div class="card-label">Pencapaian Omset Hari Ini</div>
           </div>
           """,
           unsafe_allow_html=True,
@@ -1253,22 +1263,26 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
       st.markdown(
           f"""
           <div class="dashboard-card">
-              <div class="card-value">{konsumen_hari_ini:,}</div>
-              <div class="card-subtext" style="visibility: hidden;">-</div>
+              <div>
+                  <div class="card-value">{konsumen_hari_ini:,}</div>
+                  <div class="card-subtext" style="opacity: 0;">-</div>
+              </div>
               <div class="card-label">Konsumen Beli Hari Ini</div>
           </div>
           """,
           unsafe_allow_html=True,
       )
 
-    # Baris 2: Omset Minggu Ini, Konsumen Minggu Ini, Omset Bulan Ini, Konsumen Beli Bulan Ini
-    kpi_col4, kpi_col5, kpi_col6, kpi_col7 = st.columns(4)
+    # Baris 2: Omset & Konsumen Minggu Ini, Omset Bulan Ini, Konsumen Beli Bulan Ini (Grid 3 Kolom Rapi)
+    kpi_col4, kpi_col5, kpi_col6 = st.columns(3)
     with kpi_col4:
       st.markdown(
           f"""
           <div class="dashboard-card">
-              <div class="card-value">{omset_minggu_ini:,} bks</div>
-              <div class="card-subtext" style="visibility: hidden;">-</div>
+              <div>
+                  <div class="card-value">{omset_minggu_ini:,} bks</div>
+                  <div class="card-subtext">{konsumen_minggu_ini:,} Konsumen Minggu Ini</div>
+              </div>
               <div class="card-label">Omset Minggu Ini</div>
           </div>
           """,
@@ -1278,9 +1292,11 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
       st.markdown(
           f"""
           <div class="dashboard-card">
-              <div class="card-value">{konsumen_minggu_ini:,}</div>
-              <div class="card-subtext" style="visibility: hidden;">-</div>
-              <div class="card-label">Konsumen Minggu Ini</div>
+              <div>
+                  <div class="card-value">{omset_bulan_ini:,} bks</div>
+                  <div class="card-subtext" style="opacity: 0;">-</div>
+              </div>
+              <div class="card-label">Omset Bulan Ini</div>
           </div>
           """,
           unsafe_allow_html=True,
@@ -1289,19 +1305,10 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
       st.markdown(
           f"""
           <div class="dashboard-card">
-              <div class="card-value">{omset_bulan_ini:,} bks</div>
-              <div class="card-subtext" style="visibility: hidden;">-</div>
-              <div class="card-label">Omset Bulan Ini</div>
-          </div>
-          """,
-          unsafe_allow_html=True,
-      )
-    with kpi_col7:
-      st.markdown(
-          f"""
-          <div class="dashboard-card">
-              <div class="card-value">{konsumen_bulan_ini:,}</div>
-              <div class="card-subtext" style="visibility: hidden;">-</div>
+              <div>
+                  <div class="card-value">{konsumen_bulan_ini:,}</div>
+                  <div class="card-subtext" style="opacity: 0;">-</div>
+              </div>
               <div class="card-label">Konsumen Beli Bulan Ini</div>
           </div>
           """,
