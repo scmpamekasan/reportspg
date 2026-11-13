@@ -137,6 +137,7 @@ if st.button("🚪 Keluar / Ganti Akun"):
 
 st.markdown("---")
 
+
 # ====================================================
 # 1. AMBIL DATA MASTER WILAYAH DINAMIS (SURABAYA / GRESIK)
 # ====================================================
@@ -281,12 +282,9 @@ if nama_spg_manual.strip() != "" and nama_warkop_manual.strip() != "":
             if instagram_input.strip()
             else "-"
         )
-        
-        # Waktu WIB (UTC+7)
-        waktu_wib = datetime.utcnow() + timedelta(hours=7)
 
         data_baru = {
-            "Waktu": waktu_wib.strftime("%Y-%m-%d %H:%M:%S"),
+            "Waktu": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "Promotor": st.session_state["user_spg"],
             "Nama_SPG": nama_spg_manual.strip(),
             "Kota_Kab": st.session_state["kota_kab"],
@@ -398,120 +396,6 @@ if not df_user_rekap.empty:
       df_user_rekap.drop(columns=["Tanggal"], errors="ignore"),
       use_container_width=True,
   )
-
-# ====================================================
-# 6. TAMBAHAN MENU LAPORAN GLOBAL / PUSAT (UNTUK SEMUA TEAM)
-# ====================================================
-st.markdown("---")
-st.markdown("## 📊 Dashboard Rekapitulasi Global (All Team)")
-
-if not df_master_all.empty:
-  df_master_all["Tanggal"] = pd.to_datetime(
-      df_master_all["Waktu"], errors="coerce"
-  ).dt.date
-  
-  # Ambil opsi filter unik
-  all_dates = sorted(df_master_all["Tanggal"].dropna().unique().tolist(), reverse=True)
-  all_teams = sorted(df_master_all["Promotor"].dropna().unique().tolist())
-  all_spgs = sorted(df_master_all["Nama_SPG"].dropna().unique().tolist())
-
-  # ----------------------------------------------------
-  # 2. Leaderboard Team SPG (Berdasarkan Target Team) + Filter Tanggal & Team
-  # ----------------------------------------------------
-  st.markdown("### 🏆 Leaderboard Team SPG (Berdasarkan Target Team)")
-  
-  col_lb1, col_lb2 = st.columns(2)
-  with col_lb1:
-    filter_lb_tgl = st.multiselect("Filter Tanggal (Leaderboard)", options=all_dates, default=all_dates, key="lb_tgl")
-  with col_lb2:
-    filter_lb_team = st.multiselect("Filter Team SPG (Leaderboard)", options=all_teams, default=all_teams, key="lb_team")
-
-  df_lb_filtered = df_master_all.copy()
-  if filter_lb_tgl:
-    df_lb_filtered = df_lb_filtered[df_lb_filtered["Tanggal"].isin(filter_lb_tgl)]
-  if filter_lb_team:
-    df_lb_filtered = df_lb_filtered[df_lb_filtered["Promotor"].isin(filter_lb_team)]
-
-  if not df_lb_filtered.empty:
-    df_leaderboard = (
-        df_lb_filtered.groupby(["Promotor", "Brand_Rokok"])
-        .agg(Total_Bungkus=("Jumlah_Bungkus", "sum"), Total_Konsumen=("Nama_Konsumen", "count"))
-        .reset_index()
-    )
-    df_leaderboard["Status_Target"] = df_leaderboard.apply(tentukan_status, axis=1)
-    st.dataframe(df_leaderboard.style.map(style_eval, subset=["Status_Target"]), use_container_width=True)
-  else:
-    st.info("Tidak ada data untuk filter Leaderboard yang dipilih.")
-
-  st.markdown("---")
-
-  # ----------------------------------------------------
-  # 3. Tabel Jumlah Rokok Laku Per SPG & Per Merk + Filter Tanggal, Team, Nama SPG
-  # ----------------------------------------------------
-  st.markdown("### 🚬 Jumlah Rokok Laku Per SPG & Per Merk")
-  
-  col_rokok1, col_rokok2, col_rokok3 = st.columns(3)
-  with col_rokok1:
-    filter_rokok_tgl = st.multiselect("Filter Tanggal (Rokok Laku)", options=all_dates, default=all_dates, key="rk_tgl")
-  with col_rokok2:
-    filter_rokok_team = st.multiselect("Filter Team (Rokok Laku)", options=all_teams, default=all_teams, key="rk_team")
-  with col_rokok3:
-    filter_rokok_spg = st.multiselect("Filter Nama SPG", options=all_spgs, default=all_spgs, key="rk_spg")
-
-  df_rokok_filtered = df_master_all.copy()
-  if filter_rokok_tgl:
-    df_rokok_filtered = df_rokok_filtered[df_rokok_filtered["Tanggal"].isin(filter_rokok_tgl)]
-  if filter_rokok_team:
-    df_rokok_filtered = df_rokok_filtered[df_rokok_filtered["Promotor"].isin(filter_rokok_team)]
-  if filter_rokok_spg:
-    df_rokok_filtered = df_rokok_filtered[df_rokok_filtered["Nama_SPG"].isin(filter_rokok_spg)]
-
-  if not df_rokok_filtered.empty:
-    df_rokok_summary = (
-        df_rokok_filtered.groupby(["Promotor", "Nama_SPG", "Brand_Rokok"])
-        .agg(Jumlah_Bungkus=("Jumlah_Bungkus", "sum"))
-        .reset_index()
-        .pivot_table(index=["Promotor", "Nama_SPG"], columns="Brand_Rokok", values="Jumlah_Bungkus", fill_value=0)
-        .reset_index()
-    )
-    st.dataframe(df_rokok_summary, use_container_width=True)
-  else:
-    st.info("Tidak ada data untuk filter Rokok Laku yang dipilih.")
-
-  st.markdown("---")
-
-  # ----------------------------------------------------
-  # 4. Rekapitulasi Combine Per Titik LKK (All Team) + Filter Tanggal & Nama Team
-  # ----------------------------------------------------
-  st.markdown("### 🗺️ Rekapitulasi Combine Per Titik LKK (All Team)")
-
-  col_lkk1, col_lkk2 = st.columns(2)
-  with col_lkk1:
-    filter_lkk_tgl = st.multiselect("Filter Tanggal (Titik LKK)", options=all_dates, default=all_dates, key="lkk_tgl")
-  with col_lkk2:
-    filter_lkk_team = st.multiselect("Filter Nama Team (Titik LKK)", options=all_teams, default=all_teams, key="lkk_team")
-
-  df_lkk_filtered = df_master_all.copy()
-  if filter_lkk_tgl:
-    df_lkk_filtered = df_lkk_filtered[df_lkk_filtered["Tanggal"].isin(filter_lkk_tgl)]
-  if filter_lkk_team:
-    df_lkk_filtered = df_lkk_filtered[df_lkk_filtered["Promotor"].isin(filter_lkk_team)]
-
-  if not df_lkk_filtered.empty:
-    df_lkk_summary = (
-        df_lkk_filtered.groupby(["Tanggal", "Promotor", "Kota_Kab", "Kecamatan", "Warkop_LKK", "Brand_Rokok"])
-        .agg(
-            Total_Konsumen=("Nama_Konsumen", "count"),
-            Total_Bungkus=("Jumlah_Bungkus", "sum")
-        )
-        .reset_index()
-    )
-    st.dataframe(df_lkk_summary, use_container_width=True)
-  else:
-    st.info("Tidak ada data untuk filter Rekapitulasi Titik LKK yang dipilih.")
-
-else:
-  st.info("Belum ada data global yang tersimpan di database.")
 
 # ----------------------------------------------------
   # Visualisasi Rute Perjalanan SPG
@@ -653,7 +537,7 @@ if not df_user_rekap.empty:
 
     with tab_minggu:
       if st.button("🗑️ Hapus Log 7 Hari Terakhir", type="secondary"):
-        cutoff_date = datetime.utcnow() + timedelta(hours=7) - timedelta(days=7)
+        cutoff_date = datetime.now() - timedelta(days=7)
         mask_user_keep = ~(
             (df_master_all["Promotor"] == st.session_state["user_spg"])
             & (
@@ -706,7 +590,7 @@ if not df_user_rekap.empty:
       file_name=(
           f"rekap_evaluasi_{st.session_state['user_spg'].replace(' ', '_')}_"
           f"{st.session_state['kota_kab']}_"
-          f"{(datetime.utcnow() + timedelta(hours=7)).strftime('%Y%m%d_%H%M%S')}.xlsx"
+          f"{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
       ),
       mime=(
           "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
