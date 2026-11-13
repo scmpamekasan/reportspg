@@ -353,9 +353,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
     current_spgs = load_master_spgs()
 
     with st.form("form_tambah_spg"):
-      new_spg_name = st.text_input(
-          "Nama SPG Baru", placeholder="Contoh: Siska"
-      )
+      new_spg_name = st.text_input("Nama SPG Baru", placeholder="Contoh: Siska")
       btn_add_spg = st.form_submit_button("➕ Tambah Nama SPG")
       if btn_add_spg:
         spg_clean = new_spg_name.strip()
@@ -527,12 +525,12 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
       st.rerun()
     st.stop()
 
-  # --- TAMPILAN 5: ANALITIK & REKAP ALL ---
+  # --- TAMPILAN 5: ANALITIK & REKAP ALL (DITAMBAH SEBARAN PER KECAMATAN) ---
   elif st.session_state["admin_view"] == "Analitik":
     st.markdown("## 📊 Analitik & Rekapitulasi All User")
     st.caption(
-        "Laporan mendalam performa seluruh tim berdasarkan demografi dan"
-        " wilayah."
+        "Laporan mendalam performa seluruh tim berdasarkan demografi, wilayah,"
+        " dan sebaran kecamatan."
     )
 
     df_all_users = load_database()
@@ -550,6 +548,46 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
         st.markdown("#### 🏙️ Sebaran per Wilayah (Kota/Kab)")
         kota_count = df_all_users["Kota_Kab"].value_counts()
         st.bar_chart(kota_count)
+
+      st.markdown("---")
+      st.markdown("#### 🗺️ Sebaran Kunjungan & Omset per Kecamatan")
+
+      # Filter wilayah opsional pada analitik kecamatan
+      list_kota_analitik = ["Semua Wilayah"] + sorted(
+          df_all_users["Kota_Kab"].dropna().unique().tolist()
+      )
+      pilih_kota_kec = st.selectbox(
+          "Filter Kota/Kabupaten untuk Sebaran Kecamatan", list_kota_analitik
+      )
+
+      df_kec_analitik = df_all_users.copy()
+      if pilih_kota_kec != "Semua Wilayah":
+        df_kec_analitik = df_kec_analitik[
+            df_kec_analitik["Kota_Kab"] == pilih_kota_kec
+        ]
+
+      if not df_kec_analitik.empty:
+        df_sebaran_kec = (
+            df_kec_analitik.groupby(["Kota_Kab", "Kecamatan"])
+            .agg(
+                Titik_Warkop=("Warkop_LKK", lambda x: x.nunique()),
+                Total_Konsumen=("Nama_Konsumen", "count"),
+                Total_Omset_Bungkus=("Jumlah_Bungkus", "sum"),
+            )
+            .reset_index()
+            .sort_values(by="Total_Omset_Bungkus", ascending=False)
+        )
+
+        # Grafik batang omset per kecamatan
+        chart_kec = df_sebaran_kec.set_index("Kecamatan")[
+            "Total_Omset_Bungkus"
+        ]
+        st.bar_chart(chart_kec)
+
+        # Tabel detail sebaran per kecamatan
+        st.dataframe(df_sebaran_kec, use_container_width=True)
+      else:
+        st.info("Tidak ada data pada wilayah yang dipilih.")
     else:
       st.info("Belum ada data untuk ditampilkan dalam grafik analitik.")
 
@@ -600,7 +638,8 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
   col_a1, col_a2 = st.columns(2)
   with col_a1:
     if st.button(
-        "📊 Analitik Lapangan\nDemografi & Regional", use_container_width=True
+        "📊 Analitik Lapangan\nDemografi, Regional & Kecamatan",
+        use_container_width=True,
     ):
       st.session_state["admin_view"] = "Analitik"
       st.rerun()
@@ -917,9 +956,9 @@ def load_master_wilayah(kota):
 
 gdf_wilayah = load_master_wilayah(st.session_state["kota_kab"])
 
+col_kec = None
 daftar_kecamatan = []
 if gdf_wilayah is not None:
-  col_kec = None
   for c in ["nm_kecamatan", "KECAMATAN", "kecamatan", "Name", "NAME"]:
     if c in gdf_wilayah.columns:
       col_kec = c
@@ -931,8 +970,11 @@ if gdf_wilayah is not None:
   else:
     daftar_kecamatan = ["Kecamatan Default"]
 
-# GPS & Geofencing
+# ====================================================
+# GPS & DETEKSI OTOMATIS KECAMATAN (REVERSE GEOFENCE)
+# ====================================================
 loc = get_geolocation()
+detected_kecamatan = None
 
 if loc is None:
   st.warning(
@@ -952,20 +994,30 @@ else:
   is_inside_geofence = False
 
   if gdf_wilayah is not None:
-    for geom in gdf_wilayah.geometry:
-      if geom.contains(point_user) or geom.intersects(point_user):
+    for idx_geom, row_geom in gdf_wilayah.iterrows():
+      geom = row_geom.geometry
+      if geom is not None and (
+          geom.contains(point_user) or geom.intersects(point_user)
+      ):
         is_inside_geofence = True
+        if col_kec and pd.notna(row_geom[col_kec]):
+          detected_kecamatan = str(row_geom[col_kec]).strip()
         break
   else:
     is_inside_geofence = True
 
 if is_inside_geofence:
+  info_kec_gps = (
+      f"Kecamatan **{detected_kecamatan}**"
+      if detected_kecamatan
+      else "Wilayah Terdeteksi"
+  )
   st.success(
       f"📍 **Status GPS (Valid & Terkunci di Wilayah):**\n\n"
       f"- **Koordinat:** Lat: `{user_lat:.6f}`, Lon: `{user_lon:.6f}` (Akurasi:"
       f" ±{akurasi_meter}m)\n"
-      f"- **Wilayah Sesi:** **{st.session_state['kota_kab']}** (✅ Dalam Area"
-      " Operasional)"
+      f"- **Lokasi Terdeteksi:** {info_kec_gps} —"
+      f" **{st.session_state['kota_kab']}** (✅ Dalam Area Operasional)"
   )
 else:
   st.error(
@@ -988,9 +1040,17 @@ else:
       "Nama SPG (Entry Manual)", placeholder="Contoh: Nanda"
   )
 
+# Pilih Kecamatan otomatis terisi sesuai titik GPS saat ini
+opsi_kecamatan = daftar_kecamatan if daftar_kecamatan else ["Kecamatan Umum"]
+default_index_kec = 0
+if detected_kecamatan and detected_kecamatan in opsi_kecamatan:
+  default_index_kec = opsi_kecamatan.index(detected_kecamatan)
+
 kecamatan_pilihan = st.selectbox(
     f"Pilih Kecamatan Tujuan Kunjungan ({st.session_state['kota_kab']})",
-    daftar_kecamatan if daftar_kecamatan else ["Kecamatan Umum"],
+    options=opsi_kecamatan,
+    index=default_index_kec,
+    help="Otomatis terpilih berdasarkan titik koordinat GPS Anda saat ini",
 )
 
 # Pilihan warkop terhubung langsung dengan Master Lokasi Warkop
