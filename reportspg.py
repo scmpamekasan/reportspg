@@ -20,7 +20,7 @@ st.set_page_config(
 )
 
 # ====================================================
-# CUSTOM CSS UNTUK UI MODERN & DASHBOARD
+# CUSTOM CSS UNTUK UI MODERN & TOMBOL BESAR LOGIN
 # ====================================================
 st.markdown(
     """
@@ -1066,10 +1066,10 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
   st.stop()
 
 # ====================================================
-# HALAMAN LOGIN UTAMA (PILIHAN MODE SPG / SUPERVISI)
+# HALAMAN LOGIN UTAMA (BERSEBELAHAN DENGAN TOMBOL BESAR)
 # ====================================================
 if not st.session_state["logged_in"]:
-  _, col_center, _ = st.columns([0.05, 0.9, 0.05])
+  _, col_center, _ = st.columns([0.02, 0.96, 0.02])
 
   with col_center:
     st.markdown(
@@ -1077,57 +1077,62 @@ if not st.session_state["logged_in"]:
         <div class="login-header">
             <div style="font-size: 2.5rem; margin-bottom: 6px;">📍</div>
             <h1>PORTAL LAPORAN &amp; MONITORING</h1>
-            <p>Sistem Pelaporan Lapangan &amp; Supervisi Operasional</p>
+            <p>Silakan pilih mode masuk untuk SPG atau Supervisi Lapangan</p>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
-    st.markdown("#### 🚀 Masuk ke Akun Operasional")
+    st.markdown("#### 🚀 Pilih Mode Masuk & Akun Operasional")
     
-    # Pilihan Mode Login (SPG atau Supervisi)
-    mode_login_pilihan = st.radio(
-        "Pilih Mode Login",
-        options=["Login SPG / Laporan Konsumen", "Login Monitoring Supervisi (Team & Plat Mobil)"],
-        horizontal=False
-    )
-    
+    # Tombol besar bersebelahan untuk memilih mode (SPG vs Supervisi)
+    col_btn_mode1, col_btn_mode2 = st.columns(2)
+    with col_btn_mode1:
+      if st.button("📝 LOGIN SPG\n(Entry Laporan Konsumen)", use_container_width=True, type="primary" if st.session_state["login_mode"] == "SPG" else "secondary"):
+        st.session_state["login_mode"] = "SPG"
+        st.rerun()
+    with col_btn_mode2:
+      if st.button("👀 LOGIN SUPERVISI\n(Monitoring & Rekap)", use_container_width=True, type="primary" if st.session_state["login_mode"] == "Supervisi" else "secondary"):
+        st.session_state["login_mode"] = "Supervisi"
+        st.rerun()
+
+    st.markdown(f"**Mode Aktif Saat Ini:** `{st.session_state['login_mode']}`")
     st.markdown("---")
 
-    list_spg = [f"Team SPG {i}" for i in range(1, 21)]
-    pilihan_user = st.selectbox("👤 Pilih User (Team SPG)", list_spg, key="selected_team_login")
+    with st.form("form_login_main"):
+      list_spg = [f"Team SPG {i}" for i in range(1, 21)]
+      pilihan_user = st.selectbox("👤 Pilih User / Team SPG", list_spg, key="selected_team_login")
 
-    plat_mobil_input = ""
-    if "Supervisi" in mode_login_pilihan:
-      plat_mobil_input = st.text_input("🚗 Plat Nomor Mobil Operasional", placeholder="Contoh: L 1234 ABC")
+      plat_mobil_input = ""
+      if st.session_state["login_mode"] == "Supervisi":
+        plat_mobil_input = st.text_input("🚗 Plat Nomor Mobil Operasional Supervisi", placeholder="Contoh: L 1234 ABC")
 
-    # Cek jadwal & status hari ini secara real-time
-    has_schedule, schedule_warning_msg, auto_detected_kota = get_schedule_info_for_team(pilihan_user)
+      # Cek jadwal & status hari ini secara real-time
+      has_schedule, schedule_warning_msg, auto_detected_kota = get_schedule_info_for_team(pilihan_user)
 
-    if not has_schedule:
-      st.error(f"⚠️ **Tidak Ada Jadwal Team Tersebut Untuk Hari Ini**")
-    else:
-      st.info(f"🏙️ Wilayah Terdeteksi dari Jadwal Hari Ini: **{auto_detected_kota}**")
-
-    btn_login = st.button("Masuk Aplikasi", type="primary", use_container_width=True)
-
-    if btn_login:
       if not has_schedule:
-        st.error("❌ Akses ditolak: Tidak Ada Jadwal Team Tersebut Untuk Hari Ini.")
-      elif "Supervisi" in mode_login_pilihan and not plat_mobil_input.strip():
-        st.warning("⚠️ Mohon masukkan Plat Nomor Mobil operasional terlebih dahulu.")
+        st.error(f"⚠️ **Tidak Ada Jadwal Team Tersebut Untuk Hari Ini**")
       else:
-        st.session_state["logged_in"] = True
-        st.session_state["user_spg"] = pilihan_user
-        st.session_state["login_mode"] = "Supervisi" if "Supervisi" in mode_login_pilihan else "SPG"
-        st.session_state["plat_mobil"] = plat_mobil_input.strip() if "Supervisi" in mode_login_pilihan else "Pribadi/Motor"
-        st.session_state["kota_kab"] = auto_detected_kota
-        st.rerun()
+        st.info(f"🏙️ Wilayah Terdeteksi dari Jadwal Hari Ini: **{auto_detected_kota}**")
+
+      btn_login = st.form_submit_button(f"Masuk Aplikasi ({st.session_state['login_mode']})", type="primary")
+
+      if btn_login:
+        if not has_schedule:
+          st.error("❌ Akses ditolak: Tidak Ada Jadwal Team Tersebut Untuk Hari Ini.")
+        elif st.session_state["login_mode"] == "Supervisi" and not plat_mobil_input.strip():
+          st.warning("⚠️ Mohon masukkan Plat Nomor Mobil operasional terlebih dahulu.")
+        else:
+          st.session_state["logged_in"] = True
+          st.session_state["user_spg"] = pilihan_user
+          st.session_state["plat_mobil"] = plat_mobil_input.strip() if st.session_state["login_mode"] == "Supervisi" else "Pribadi/Motor"
+          st.session_state["kota_kab"] = auto_detected_kota
+          st.rerun()
 
     st.markdown(
         """
         <div class="footer-note">
-            Gunakan sidebar kiri untuk masuk ke menu <b>Dashboard Admin.<br/>
+            Gunakan sidebar kiri untuk masuk ke menu <b>Dashboard Admin</b>.<br/>
             © 2026 Tumarso Monitoring System
         </div>
         """,
@@ -1391,7 +1396,7 @@ if st.session_state["login_mode"] == "Supervisi":
       total_omset_lkk = int(df_lkk_active["Jumlah_Bungkus"].sum())
       st.markdown(
           f'<div class="kpi-card"><div class="kpi-value">{total_omset_lkk:,} bks</div>'
-          '<div class="kpi-label">Omset LKK Ini</div></div>',
+          '<div class="kpi-label">Omset LKK Ini (Combine SPG)</div></div>',
           unsafe_allow_html=True,
       )
     with col_mon3:
