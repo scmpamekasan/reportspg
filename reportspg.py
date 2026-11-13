@@ -13,14 +13,14 @@ from streamlit_js_eval import get_geolocation
 # KONFIGURASI HALAMAN STREAMLIT
 # ====================================================
 st.set_page_config(
-    page_title="Laporan SPG Mobile",
+    page_title="Laporan SPG & Supervisi Mobile",
     page_icon="📍",
     layout="centered",
     initial_sidebar_state="auto",
 )
 
 # ====================================================
-# CUSTOM CSS UNTUK UI MODERN & DASHBOARD ADMIN
+# CUSTOM CSS UNTUK UI MODERN & DASHBOARD
 # ====================================================
 st.markdown(
     """
@@ -140,6 +140,7 @@ JADWAL_SPG_FILE = "Jadwal SPG.xlsx"
 EXPECTED_COLUMNS = [
     "Waktu",
     "Promotor",
+    "Plat_Mobil",
     "Nama_SPG",
     "Kota_Kab",
     "Kecamatan",
@@ -362,8 +363,12 @@ if "logged_in" not in st.session_state:
   st.session_state["logged_in"] = False
 if "user_spg" not in st.session_state:
   st.session_state["user_spg"] = ""
+if "plat_mobil" not in st.session_state:
+  st.session_state["plat_mobil"] = ""
 if "kota_kab" not in st.session_state:
   st.session_state["kota_kab"] = ""
+if "login_mode" not in st.session_state:
+  st.session_state["login_mode"] = "SPG"  # Pilihan: 'SPG' atau 'Supervisi'
 if "admin_logged_in" not in st.session_state:
   st.session_state["admin_logged_in"] = False
 if "admin_view" not in st.session_state:
@@ -529,23 +534,14 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
   # --- TAMPILAN 2: MASTER DATA MEREK ROKOK ---
   elif st.session_state["admin_view"] == "Master_Brand":
     st.markdown("## 🚬 Master Data: Merek Rokok & Target")
-    st.caption(
-        "Kelola daftar merek rokok beserta aturan target omset per SPG dan"
-        " Team."
-    )
+    st.caption("Kelola daftar merek rokok beserta aturan target omset per SPG dan Team.")
 
     current_brands = load_master_brands()
 
     with st.form("form_tambah_brand"):
-      new_brand_name = st.text_input(
-          "Nama Merek Rokok Baru", placeholder="Contoh: Djarum Super Extra"
-      )
-      t_spg = st.number_input(
-          "Target per SPG (Bungkus)", min_value=1, value=30, step=1
-      )
-      t_team = st.number_input(
-          "Target per Team (Bungkus)", min_value=1, value=60, step=1
-      )
+      new_brand_name = st.text_input("Nama Merek Rokok Baru", placeholder="Contoh: Djarum Super Extra")
+      t_spg = st.number_input("Target per SPG (Bungkus)", min_value=1, value=30, step=1)
+      t_team = st.number_input("Target per Team (Bungkus)", min_value=1, value=60, step=1)
       btn_add_brand = st.form_submit_button("➕ Tambah Merek Rokok")
       if btn_add_brand:
         b_clean = new_brand_name.strip()
@@ -557,10 +553,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
                 "target_spg": int(t_spg),
                 "target_team": int(t_team),
             }
-            st.success(
-                f"✅ Merek rokok '{b_clean}' berhasil ditambahkan dengan target"
-                f" SPG: {t_spg}, Team: {t_team}!"
-            )
+            st.success(f"✅ Merek rokok '{b_clean}' berhasil ditambahkan!")
             st.rerun()
           else:
             st.warning("Merek rokok tersebut sudah ada dalam daftar.")
@@ -595,56 +588,31 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
   # --- TAMPILAN 3: MASTER DATA LOKASI WARKOP DARI FILE EXCEL ---
   elif st.session_state["admin_view"] == "Master_Lokasi":
     st.markdown("## 📍 Master Data: Lokasi Warkop / LKK (Excel)")
-    st.caption(
-        "Mengelola data warkop/LKK dari file repository: Master WarkopLKK.xlsx"
-    )
+    st.caption("Mengelola data warkop/LKK dari file repository: Master WarkopLKK.xlsx")
 
     df_lokasi_excel = load_master_lokasi_excel()
     cols_available = df_lokasi_excel.columns.tolist()
-    st.info(
-        f"📁 Sumber file aktif: `{MASTER_LOKASI_FILE}` | Kolom terdeteksi:"
-        f" {cols_available}"
-    )
+    st.info(f"📁 Sumber file aktif: `{MASTER_LOKASI_FILE}` | Kolom terdeteksi: {cols_available}")
 
     with st.form("form_tambah_lokasi_excel"):
       st.markdown("#### Tambah Baris Warkop / LKK Baru ke Excel")
-      col_kec_input = st.text_input(
-          "Kecamatan", placeholder="Contoh: Tegalsari"
-      )
-      col_warkop_input = st.text_input(
-          "Nama Warkop / LKK", placeholder="Contoh: Warkop Barokah"
-      )
-      col_alamat_input = st.text_input(
-          "Alamat Warkop", placeholder="Contoh: Jl. Ngagel Tirto No. 10"
-      )
+      col_kec_input = st.text_input("Kecamatan", placeholder="Contoh: Tegalsari")
+      col_warkop_input = st.text_input("Nama Warkop / LKK", placeholder="Contoh: Warkop Barokah")
+      col_alamat_input = st.text_input("Alamat Warkop", placeholder="Contoh: Jl. Ngagel Tirto No. 10")
       btn_add_excel = st.form_submit_button("➕ Tambah & Simpan ke Excel")
 
       if btn_add_excel:
         if col_kec_input.strip() and col_warkop_input.strip():
           kec_col_name = next(
-              (
-                  c
-                  for c in df_lokasi_excel.columns
-                  if "kec" in c.lower() or "wilayah" in c.lower()
-              ),
+              (c for c in df_lokasi_excel.columns if "kec" in c.lower() or "wilayah" in c.lower()),
               "Kecamatan",
           )
           warkop_col_name = next(
-              (
-                  c
-                  for c in df_lokasi_excel.columns
-                  if "warkop" in c.lower()
-                  or "lkk" in c.lower()
-                  or "nama" in c.lower()
-              ),
+              (c for c in df_lokasi_excel.columns if "warkop" in c.lower() or "lkk" in c.lower() or "nama" in c.lower()),
               "Warkop_LKK",
           )
           alamat_col_name = next(
-              (
-                  c
-                  for c in df_lokasi_excel.columns
-                  if "alamat" in c.lower() or "address" in c.lower()
-              ),
+              (c for c in df_lokasi_excel.columns if "alamat" in c.lower() or "address" in c.lower()),
               "Alamat_Warkop",
           )
 
@@ -657,10 +625,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
               [df_lokasi_excel, pd.DataFrame([new_row])], ignore_index=True
           )
           if save_master_lokasi_excel(df_lokasi_excel):
-            st.success(
-                f"✅ Warkop '{col_warkop_input.strip()}' berhasil ditambahkan ke"
-                f" {MASTER_LOKASI_FILE}!"
-            )
+            st.success(f"✅ Warkop '{col_warkop_input.strip()}' berhasil ditambahkan!")
             st.rerun()
         else:
           st.warning("Mohon isi nama Kecamatan dan Nama Warkop/LKK.")
@@ -687,10 +652,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
   # --- TAMPILAN 4: ANALITIK & REKAP ALL ---
   elif st.session_state["admin_view"] == "Analitik":
     st.markdown("## 📊 Analitik & Rekapitulasi All User")
-    st.caption(
-        "Laporan mendalam performa seluruh tim berdasarkan demografi, wilayah,"
-        " dan sebaran kecamatan."
-    )
+    st.caption("Laporan mendalam performa seluruh tim berdasarkan demografi, wilayah, dan sebaran kecamatan.")
 
     df_all_users = load_database()
     if not df_all_users.empty:
@@ -763,10 +725,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
   # --- TAMPILAN 5: PETA RUTE ALL USER ---
   elif st.session_state["admin_view"] == "Peta_Rute":
     st.markdown("## 🗺️ Visualisasi Peta Rute Perjalanan (All User)")
-    st.caption(
-        "Pantau rute dan titik kunjungan lapangan berdasarkan filter Team SPG,"
-        " Nama SPG, dan Tanggal."
-    )
+    st.caption("Pantau rute dan titik kunjungan lapangan berdasarkan filter Team SPG, Nama SPG, dan Tanggal.")
 
     df_peta_all = load_database()
     if not df_peta_all.empty and "Latitude" in df_peta_all.columns:
@@ -844,7 +803,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
             initial_view_state=view_state,
             tooltip={
                 "html": (
-                    "<b>Team:</b> {Promotor} ({Nama_SPG})<br/><b>Warkop:</b>"
+                    "<b>Team:</b> {Promotor} ({Nama_SPG})<br/><b>Plat Mobil:</b> {Plat_Mobil}<br/><b>Warkop:</b>"
                     " {Warkop_LKK} ({Kecamatan})<br/><b>Brand:</b>"
                     " {Brand_Rokok} ({Jumlah_Bungkus} bks)<br/><b>Waktu:</b>"
                     " {Waktu}"
@@ -855,9 +814,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
 
         st.pydeck_chart(deck_map)
       else:
-        st.warning(
-            "Tidak ada data koordinat yang cocok dengan filter yang dipilih."
-        )
+        st.warning("Tidak ada data koordinat yang cocok dengan filter yang dipilih.")
     else:
       st.info("Belum ada data koordinat GPS yang terekam pada sistem.")
 
@@ -869,36 +826,22 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
 
   # --- TAMPILAN UTAMA: DASHBOARD ADMIN BERGAYA KARTU ---
   st.markdown("## 📊 Dashboard Admin & Manajemen Lapangan")
-  st.caption(
-      "Pilih menu master data atau pantau rekapitulasi tim secara real-time."
-  )
+  st.caption("Pilih menu master data atau pantau rekapitulasi tim secara real-time.")
 
   st.markdown("#### 📦 Master Data")
   col_m1, col_m2 = st.columns(2)
   with col_m1:
-    if st.button(
-        "👥 Master Team & Brand\nAtur brand rokok per team (1-20)",
-        use_container_width=True,
-    ):
+    if st.button("👥 Master Team & Brand\nAtur brand rokok per team (1-20)", use_container_width=True):
       st.session_state["admin_view"] = "Master_Team"
       st.rerun()
-    if st.button(
-        "👩‍💼 Nama SPG\nKelola daftar SPG",
-        use_container_width=True,
-    ):
+    if st.button("👩‍💼 Nama SPG\nKelola daftar SPG", use_container_width=True):
       st.session_state["admin_view"] = "Master_SPG"
       st.rerun()
   with col_m2:
-    if st.button(
-        "📍 Lokasi Warkop (Excel)\nKelola dari Master WarkopLKK.xlsx",
-        use_container_width=True,
-    ):
+    if st.button("📍 Lokasi Warkop (Excel)\nKelola dari Master WarkopLKK.xlsx", use_container_width=True):
       st.session_state["admin_view"] = "Master_Lokasi"
       st.rerun()
-    if st.button(
-        "🚬 Merek Rokok & Target\nKelola daftar merek & target",
-        use_container_width=True,
-    ):
+    if st.button("🚬 Merek Rokok & Target\nKelola daftar merek & target", use_container_width=True):
       st.session_state["admin_view"] = "Master_Brand"
       st.rerun()
 
@@ -906,22 +849,15 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
   st.markdown("#### 📈 Analitik & Pemetaan")
   col_a1, col_a2, col_a3 = st.columns(3)
   with col_a1:
-    if st.button(
-        "📊 Analitik Lapangan\nDemografi & Kecamatan", use_container_width=True
-    ):
+    if st.button("📊 Analitik Lapangan\nDemografi & Kecamatan", use_container_width=True):
       st.session_state["admin_view"] = "Analitik"
       st.rerun()
   with col_a2:
-    if st.button(
-        "🗺️ Peta Rute All User\nFilter Team/SPG/Tanggal", use_container_width=True
-    ):
+    if st.button("🗺️ Peta Rute All User\nFilter Team/SPG/Tanggal", use_container_width=True):
       st.session_state["admin_view"] = "Peta_Rute"
       st.rerun()
   with col_a3:
-    if st.button(
-        "⬅️ Keluar Admin",
-        use_container_width=True,
-    ):
+    if st.button("⬅️ Keluar Admin", use_container_width=True):
       st.session_state["admin_logged_in"] = False
       st.rerun()
 
@@ -1130,7 +1066,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
   st.stop()
 
 # ====================================================
-# HALAMAN LOGIN UTAMA (DENGAN VALIDASI JADWAL HARI INI)
+# HALAMAN LOGIN UTAMA (PILIHAN MODE SPG / SUPERVISI)
 # ====================================================
 if not st.session_state["logged_in"]:
   _, col_center, _ = st.columns([0.05, 0.9, 0.05])
@@ -1140,19 +1076,32 @@ if not st.session_state["logged_in"]:
         """
         <div class="login-header">
             <div style="font-size: 2.5rem; margin-bottom: 6px;">📍</div>
-            <h1>PORTAL LAPORAN SPG</h1>
-            <p>Sistem Pelaporan Lapangan &amp; Monitoring Geofencing</p>
+            <h1>PORTAL LAPORAN &amp; MONITORING</h1>
+            <p>Sistem Pelaporan Lapangan &amp; Supervisi Operasional</p>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
     st.markdown("#### 🚀 Masuk ke Akun Operasional")
-    st.caption("Pilih tim (1-20). Wilayah operasional akan otomatis terdeteksi sesuai jadwal.")
+    
+    # Pilihan Mode Login (SPG atau Supervisi)
+    mode_login_pilihan = st.radio(
+        "Pilih Mode Login",
+        options=["Login SPG / Laporan Konsumen", "Login Monitoring Supervisi (Team & Plat Mobil)"],
+        horizontal=False
+    )
+    
+    st.markdown("---")
 
     list_spg = [f"Team SPG {i}" for i in range(1, 21)]
     pilihan_user = st.selectbox("👤 Pilih User (Team SPG)", list_spg, key="selected_team_login")
 
+    plat_mobil_input = ""
+    if "Supervisi" in mode_login_pilihan:
+      plat_mobil_input = st.text_input("🚗 Plat Nomor Mobil Operasional", placeholder="Contoh: L 1234 ABC")
+
+    # Cek jadwal & status hari ini secara real-time
     has_schedule, schedule_warning_msg, auto_detected_kota = get_schedule_info_for_team(pilihan_user)
 
     if not has_schedule:
@@ -1165,9 +1114,13 @@ if not st.session_state["logged_in"]:
     if btn_login:
       if not has_schedule:
         st.error("❌ Akses ditolak: Tidak Ada Jadwal Team Tersebut Untuk Hari Ini.")
+      elif "Supervisi" in mode_login_pilihan and not plat_mobil_input.strip():
+        st.warning("⚠️ Mohon masukkan Plat Nomor Mobil operasional terlebih dahulu.")
       else:
         st.session_state["logged_in"] = True
         st.session_state["user_spg"] = pilihan_user
+        st.session_state["login_mode"] = "Supervisi" if "Supervisi" in mode_login_pilihan else "SPG"
+        st.session_state["plat_mobil"] = plat_mobil_input.strip() if "Supervisi" in mode_login_pilihan else "Pribadi/Motor"
         st.session_state["kota_kab"] = auto_detected_kota
         st.rerun()
 
@@ -1184,17 +1137,18 @@ if not st.session_state["logged_in"]:
   st.stop()
 
 # ====================================================
-# APLIKASI UTAMA SETELAH LOGIN SPG BERHASIL
+# APLIKASI UTAMA SETELAH LOGIN BERHASIL (SPG / SUPERVISI)
 # ====================================================
 col_banner, col_logout = st.columns([0.78, 0.22])
 
 with col_banner:
+  mode_badge = "👀 Mode Supervisi" if st.session_state['login_mode'] == "Supervisi" else "📝 Mode SPG"
   st.markdown(
       f"""
       <div class="user-banner">
-          <div class="user-banner-title">👤 {st.session_state['user_spg']}</div>
+          <div class="user-banner-title">👤 {st.session_state['user_spg']} &nbsp;|&nbsp; <span style="font-size: 0.9rem; color: #38bdf8;">{mode_badge}</span></div>
           <div class="user-banner-sub">
-              🏙️ Wilayah Operasional (Otomatis Jadwal): <b>{st.session_state['kota_kab']}</b>
+              🚗 Plat Mobil: <b>{st.session_state['plat_mobil']}</b> &nbsp;|&nbsp; 🏙️ Wilayah: <b>{st.session_state['kota_kab']}</b>
           </div>
       </div>
       """,
@@ -1302,31 +1256,8 @@ else:
       f"- **Koordinat Anda:** Lat: `{user_lat:.6f}`, Lon: `{user_lon:.6f}`\n"
       f"- **Wilayah Terpilih (Jadwal):** **{st.session_state['kota_kab']}**\n\n"
       "⚠️ Posisi Anda terdeteksi berada di luar batas zona GeoJSON wilayah"
-      f" {st.session_state['kota_kab']}. Form laporan dikunci sampai Anda"
-      " berada di dalam area operasional yang sah."
+      f" {st.session_state['kota_kab']}."
   )
-
-st.markdown("### 📋 Lokasi Kunjungan")
-
-daftar_master_spg = load_master_spgs()
-if daftar_master_spg:
-  nama_spg_manual = st.selectbox("Pilih Nama SPG", options=daftar_master_spg)
-else:
-  nama_spg_manual = st.text_input(
-      "Nama SPG (Entry Manual)", placeholder="Contoh: Nanda"
-  )
-
-opsi_kecamatan = daftar_kecamatan if daftar_kecamatan else ["Kecamatan Umum"]
-default_index_kec = 0
-if detected_kecamatan and detected_kecamatan in opsi_kecamatan:
-  default_index_kec = opsi_kecamatan.index(detected_kecamatan)
-
-kecamatan_pilihan = st.selectbox(
-    f"Pilih Kecamatan Tujuan Kunjungan ({st.session_state['kota_kab']})",
-    options=opsi_kecamatan,
-    index=default_index_kec,
-    help="Otomatis terpilih berdasarkan titik koordinat GPS Anda saat ini",
-)
 
 # ====================================================
 # VALIDASI JADWAL SPG DARI EXCEL (Jadwal SPG.xlsx)
@@ -1335,6 +1266,8 @@ df_jadwal_raw = load_jadwal_spg()
 is_scheduled_today = True
 schedule_check_msg = ""
 
+# Ambil daftar kecamatan sesuai jadwal team hari ini
+daftar_kecamatan_terjadwal = []
 if not df_jadwal_raw.empty:
   kota_col_j = next((c for c in df_jadwal_raw.columns if "kota" in c.lower()), None)
   kec_col_j = next((c for c in df_jadwal_raw.columns if "kecamatan" in c.lower()), None)
@@ -1342,7 +1275,6 @@ if not df_jadwal_raw.empty:
   if kota_col_j and kec_col_j:
     today_date = datetime.now().date()
     today_col = None
-    
     for c in df_jadwal_raw.columns:
       try:
         parsed_dt = pd.to_datetime(c).date()
@@ -1353,71 +1285,38 @@ if not df_jadwal_raw.empty:
         continue
         
     if today_col:
-      mask_j = (
-          (df_jadwal_raw[kota_col_j].astype(str).str.strip().str.lower() == st.session_state["kota_kab"].strip().lower()) &
-          (df_jadwal_raw[kec_col_j].astype(str).str.strip().str.lower() == str(kecamatan_pilihan).strip().lower())
-      )
-      row_matched = df_jadwal_raw[mask_j]
+      team_clean = st.session_state["user_spg"].strip().lower()
+      team_digit = ''.join(filter(str.isdigit, team_clean))
       
-      if not row_matched.empty:
-        val_jadwal = str(row_matched.iloc[0][today_col]).strip()
-        user_team_str = st.session_state["user_spg"].strip().lower()
-        val_jadwal_lower = val_jadwal.lower()
-        
-        if val_jadwal == "" or val_jadwal.lower() == "nan" or val_jadwal == "-":
-          is_scheduled_today = False
-          schedule_check_msg = f"❌ Tidak Ada Jadwal Team Tersebut Untuk Hari Ini di Kecamatan {kecamatan_pilihan}."
-        elif user_team_str not in val_jadwal_lower and "team" in user_team_str and "team" not in val_jadwal_lower:
-          team_digit = ''.join(filter(str.isdigit, user_team_str))
-          excel_digit = ''.join(filter(str.isdigit, val_jadwal_lower))
-          if team_digit and excel_digit and team_digit != excel_digit:
-            is_scheduled_today = False
-            schedule_check_msg = f"❌ Jadwal di Kecamatan {kecamatan_pilihan} pada tanggal {today_date} ditugaskan untuk **{val_jadwal}**, bukan untuk {st.session_state['user_spg']}."
-      else:
-        is_scheduled_today = False
-        schedule_check_msg = f"❌ Tidak Ada Jadwal Team Tersebut Untuk Hari Ini di wilayah {st.session_state['kota_kab']}."
+      for _, row in df_jadwal_raw.iterrows():
+        val_cell = str(row[today_col]).strip()
+        if val_cell and val_cell.lower() != "nan" and val_cell != "-":
+          val_lower = val_cell.lower()
+          cell_digit = ''.join(filter(str.isdigit, val_lower))
+          if team_clean == val_lower or (team_digit and cell_digit and team_digit == cell_digit and len(team_digit) == len(cell_digit)):
+            k_val = str(row[kec_col_j]).strip()
+            if k_val and k_val not in daftar_kecamatan_terjadwal:
+              daftar_kecamatan_terjadwal.append(k_val)
 
-if not is_scheduled_today:
-  st.error(
-      f"🚨 **Akses Masuk Form Dikunci:**\n\n"
-      f"{schedule_check_msg}\n\n"
-      "⚠️ Anda tidak dapat melakukan entry laporan pada kecamatan atau jadwal ini karena tidak sesuai dengan data penugasan resmi."
-  )
-else:
-  if is_inside_geofence:
-    st.success(f"✅ Jadwal terverifikasi! Anda terdaftar bertugas di Kecamatan {kecamatan_pilihan} hari ini.")
+if not daftar_kecamatan_terjadwal:
+  daftar_kecamatan_terjadwal = daftar_kecamatan if daftar_kecamatan else ["Kecamatan Umum"]
 
-# ====================================================
-# FILTER WARKOP/LKK SESUAI KECAMATAN DARI EXCEL & AMBIL ALAMAT
-# ====================================================
+st.markdown("### 📋 Lokasi Kunjungan Lapangan")
+
+kecamatan_pilihan = st.selectbox(
+    f"Pilih Kecamatan Tujuan Kunjungan Berdasarkan Jadwal ({st.session_state['kota_kab']})",
+    options=daftar_kecamatan_terjadwal,
+    help="Kecamatan difilter otomatis sesuai penugasan jadwal hari ini"
+)
+
+# Filter warkop/LKK
 df_master_excel = load_master_lokasi_excel()
 filtered_df_warkop = pd.DataFrame()
 
 if not df_master_excel.empty:
-  col_kec_excel = next(
-      (
-          c
-          for c in df_master_excel.columns
-          if "kec" in c.lower() or "wilayah" in c.lower()
-      ),
-      None,
-  )
-  col_warkop_excel = next(
-      (
-          c
-          for c in df_master_excel.columns
-          if "warkop" in c.lower() or "lkk" in c.lower() or "nama" in c.lower()
-      ),
-      None,
-  )
-  col_alamat_excel = next(
-      (
-          c
-          for c in df_master_excel.columns
-          if "alamat" in c.lower() or "address" in c.lower()
-      ),
-      None,
-  )
+  col_kec_excel = next((c for c in df_master_excel.columns if "kec" in c.lower() or "wilayah" in c.lower()), None)
+  col_warkop_excel = next((c for c in df_master_excel.columns if "warkop" in c.lower() or "lkk" in c.lower() or "nama" in c.lower()), None)
+  col_alamat_excel = next((c for c in df_master_excel.columns if "alamat" in c.lower() or "address" in c.lower()), None)
 
   if col_kec_excel and col_warkop_excel:
     mask = (
@@ -1439,12 +1338,12 @@ if not filtered_warkop_list:
   filtered_warkop_list = ["Warkop Alternatif 1", "Warkop Alternatif 2"]
 
 nama_warkop_manual = st.selectbox(
-    f"Pilih Warkop / LKK di Kecamatan {kecamatan_pilihan}",
+    f"Pilih Warkop / LKK (Titik Wajib Kunjung) di {kecamatan_pilihan}",
     options=filtered_warkop_list,
-    help="Daftar warkop difilter otomatis dari file Master WarkopLKK.xlsx sesuai kecamatan aktif",
+    help="Daftar warkop difilter otomatis dari Master WarkopLKK.xlsx",
 )
 
-# --- MENAMPILKAN ALAMAT WARKOP OTOMATIS DI BAWAHNYA ---
+# Alamat warkop otomatis di bawahnya
 alamat_warkop_terpilih = "-"
 if not df_master_excel.empty and col_warkop_excel and col_alamat_excel:
   match_row = df_master_excel[df_master_excel[col_warkop_excel].astype(str).str.strip() == str(nama_warkop_manual).strip()]
@@ -1454,15 +1353,92 @@ if not df_master_excel.empty and col_warkop_excel and col_alamat_excel:
 st.markdown(
     f"""
     <div class="address-box">
-        📍 <b>Alamat Warkop / LKK:</b> {alamat_warkop_terpilih}
+        📍 <b>Alamat Warkop / LKK Wajib Kunjung:</b> {alamat_warkop_terpilih}
     </div>
     """,
     unsafe_allow_html=True,
 )
 
+# ====================================================
+# JIKA KONDISI LOGIN SUPERVISI: TAMPILKAN MENU MONITORING
+# ====================================================
+if st.session_state["login_mode"] == "Supervisi":
+  st.markdown("---")
+  st.markdown(f"### 👀 Dashboard Monitoring Team: {st.session_state['user_spg']} (Plat: `{st.session_state['plat_mobil']}`)")
+  st.caption("Pantau ringkasan performa kunjungan, jumlah kontak konsumen, nama SPG bertugas, dan omset per LKK secara real-time.")
+
+  # Ambil data dari database untuk team ini di lokasi/kecamatan ini
+  df_all_db = load_database()
+  df_current_team = pd.DataFrame()
+  if not df_all_db.empty and "Promotor" in df_all_db.columns:
+    df_current_team = df_all_db[df_all_db["Promotor"] == st.session_state["user_spg"]].copy()
+
+  if not df_current_team.empty:
+    df_current_team["Jumlah_Bungkus"] = pd.to_numeric(df_current_team["Jumlah_Bungkus"], errors="coerce").fillna(0)
+    
+    # Filter per LKK yang sedang dipilih
+    df_lkk_active = df_current_team[df_current_team["Warkop_LKK"].astype(str).str.strip() == str(nama_warkop_manual).strip()]
+
+    col_mon1, col_mon2, col_mon3 = st.columns(3)
+    with col_mon1:
+      total_kontak_lkk = len(df_lkk_active)
+      st.markdown(
+          f'<div class="kpi-card"><div class="kpi-value">{total_kontak_lkk}</div>'
+          '<div class="kpi-label">Kontak Konsumen (LKK Ini)</div></div>',
+          unsafe_allow_html=True,
+      )
+    with col_mon2:
+      total_omset_lkk = int(df_lkk_active["Jumlah_Bungkus"].sum())
+      st.markdown(
+          f'<div class="kpi-card"><div class="kpi-value">{total_omset_lkk:,} bks</div>'
+          '<div class="kpi-label">Omset LKK Ini</div></div>',
+          unsafe_allow_html=True,
+      )
+    with col_mon3:
+      spg_list_str = ", ".join(df_lkk_active["Nama_SPG"].dropna().unique().tolist()) if not df_lkk_active.empty else "Belum ada SPG"
+      st.markdown(
+          f'<div class="kpi-card" style="border-left-color: #3b82f6;"><div class="kpi-value" style="font-size: 1.1rem; padding-top: 6px;">{spg_list_str}</div>'
+          '<div class="kpi-label">Nama SPG Bertugas</div></div>',
+          unsafe_allow_html=True,
+      )
+
+    st.markdown("---")
+    st.markdown(f"#### 📊 Rekapitulasi Per Titik LKK Wajib Kunjung ({st.session_state['user_spg']})")
+    
+    df_rekap_lkk = (
+        df_current_team.groupby(["Kecamatan", "Warkop_LKK", "Alamat_Warkop"])
+        .agg(
+            Jumlah_SPG_Bertugas=("Nama_SPG", lambda x: ", ".join(x.dropna().unique())),
+            Jumlah_Kontak_Konsumen=("Nama_Konsumen", "count"),
+            Total_Omset_Bungkus=("Jumlah_Bungkus", "sum")
+        )
+        .reset_index()
+        .sort_values(by="Total_Omset_Bungkus", ascending=False)
+    )
+
+    st.dataframe(df_rekap_lkk, use_container_width=True)
+
+    st.markdown("#### 📑 Log Detail Konsumen di Warkop Ini")
+    if not df_lkk_active.empty:
+      st.dataframe(df_lkk_active.drop(columns=["Waktu", "Promotor", "Plat_Mobil"], errors="ignore"), use_container_width=True)
+    else:
+      st.info(f"Belum ada data konsumen masuk untuk titik Warkop / LKK '{nama_warkop_manual}'.")
+  else:
+    st.info("Belum ada data transaksi atau kunjungan tercatat untuk team ini.")
+
+  st.stop()
+
+# ====================================================
+# JIKA KONDISI LOGIN SPG: TAMPILKAN FORM INPUT LAPORAN
+# ====================================================
+daftar_master_spg = load_master_spgs()
+if daftar_master_spg:
+  nama_spg_manual = st.selectbox("Pilih Nama SPG yang Bertugas", options=daftar_master_spg)
+else:
+  nama_spg_manual = st.text_input("Nama SPG (Entry Manual)", placeholder="Contoh: Nanda")
+
 if (
     is_inside_geofence
-    and is_scheduled_today
     and str(nama_spg_manual).strip() != ""
     and str(nama_warkop_manual).strip() != ""
 ):
@@ -1477,7 +1453,7 @@ if (
         "### 📝 Form Input Laporan Konsumen &nbsp; `💾 Dilengkapi Auto-Draft`"
     )
     st.write(
-        f"**Team Login:** {st.session_state['user_spg']} | **Nama SPG:**"
+        f"**Team Login:** {st.session_state['user_spg']} | **Plat Mobil:** {st.session_state['plat_mobil']} | **Nama SPG:**"
         f" {str(nama_spg_manual).strip()} | **Warkop/LKK:**"
         f" {str(nama_warkop_manual).strip()}"
     )
@@ -1563,6 +1539,7 @@ if (
         data_baru = {
             "Waktu": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "Promotor": st.session_state["user_spg"],
+            "Plat_Mobil": st.session_state["plat_mobil"],
             "Nama_SPG": str(nama_spg_manual).strip(),
             "Kota_Kab": st.session_state["kota_kab"],
             "Kecamatan": kecamatan_pilihan,
@@ -1601,8 +1578,6 @@ else:
         "🔒 Form input terkunci karena posisi GPS Anda berada di luar wilayah"
         f" {st.session_state['kota_kab']}."
     )
-  elif not is_scheduled_today:
-    st.warning("🔒 Form input dikunci karena Tidak Ada Jadwal Team Tersebut Untuk Hari Ini.")
   else:
     st.info(
         "ℹ️ Silakan pilih **Nama SPG** dan pastikan **Warkop/LKK** terpilih untuk"
