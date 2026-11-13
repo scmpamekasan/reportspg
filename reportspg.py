@@ -119,12 +119,13 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# File database lokal agar data persisten
+# File database lokal & master
 DB_FILE = "rekap_laporan_spg.csv"
 MASTER_BRAND_FILE = "master_brand_rokok.json"
 MASTER_LOKASI_FILE = "Master WarkopLKK.xlsx"
 MASTER_PLAT_FILE = "master_plat_kendaraan.json"
 MASTER_SPG_FILE = "master_nama_spg.json"
+JADWAL_SPG_FILE = "Jadwal SPG.xlsx"
 
 EXPECTED_COLUMNS = [
     "Waktu",
@@ -165,7 +166,7 @@ def save_database(df):
 
 
 # ====================================================
-# MANAJEMEN MASTER DATA (BRAND, LOKASI/EXCEL, PLAT & SPG)
+# MANAJEMEN MASTER DATA & JADWAL SPG
 # ====================================================
 DEFAULT_BRANDS = [
     "D.Super 12",
@@ -227,6 +228,19 @@ def save_master_lokasi_excel(df_excel):
   except Exception as e:
     st.error(f"Gagal menyimpan file Excel: {e}")
     return False
+
+
+def load_jadwal_spg():
+  """Membaca file Jadwal SPG.xlsx."""
+  if os.path.exists(JADWAL_SPG_FILE):
+    try:
+      df_jadwal = pd.read_excel(JADWAL_SPG_FILE)
+      df_jadwal.columns = [str(c).strip() for c in df_jadwal.columns]
+      return df_jadwal
+    except Exception as e:
+      st.error(f"Gagal membaca file Jadwal SPG {JADWAL_SPG_FILE}: {e}")
+      return pd.DataFrame()
+  return pd.DataFrame()
 
 
 def load_master_plats():
@@ -987,7 +1001,6 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
               + "-W"
               + iso_cal["week"].astype(str).str.zfill(2)
           )
-          # Buat label rentang tanggal per minggu agar mudah dibaca admin
           week_options = {}
           for yw, group in df_valid_dt.groupby("Year_Week"):
             min_d = group["Tanggal"].min()
@@ -1003,7 +1016,6 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
           )
           if st.button("🗑️ Hapus Semua Data Minggu Terpilih", type="primary", key="btn_del_week"):
             target_yw = week_options[pilih_minggu_label]
-            # Tandai indeks yang cocok dengan minggu tersebut
             iso_all = df_all_users["Waktu_Dt"].dt.isocalendar()
             yw_series = (
                 iso_all["year"].astype(str)
@@ -1037,7 +1049,6 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
           else:
             st.warning("Centang kotak konfirmasi terlebih dahulu sebelum menghapus seluruh data.")
 
-    # Tampilkan Tabel Log Detail Transaksi
     st.dataframe(
         df_all_users.drop(columns=["Waktu_Dt", "Tanggal"], errors="ignore").sort_values(
             by="Waktu", ascending=False
@@ -1263,6 +1274,70 @@ kecamatan_pilihan = st.selectbox(
 )
 
 # ====================================================
+# VALIDASI JADWAL SPG DARI EXCEL (Jadwal SPG.xlsx)
+# ====================================================
+df_jadwal_raw = load_jadwal_spg()
+is_scheduled_today = True
+schedule_check_msg = ""
+
+if not df_jadwal_raw.empty:
+  # Normalisasi kolom kota & kecamatan
+  kota_col_j = next((c for c in df_jadwal_raw.columns if "kota" in c.lower()), None)
+  kec_col_j = next((c for c in df_jadwal_raw.columns if "kecamatan" in c.lower()), None)
+  
+  if kota_col_j and kec_col_j:
+    # Cari kolom tanggal hari ini (hari ini = datetime.now().date() atau tanggal simulasi aktif)
+    today_date = datetime.now().date()
+    today_col = None
+    
+    for c in df_jadwal_raw.columns:
+      try:
+        parsed_dt = pd.to_datetime(c).date()
+        if parsed_dt == today_date:
+          today_col = c
+          break
+      except Exception:
+        continue
+        
+    if today_col:
+      # Filter baris berdasarkan Kota dan Kecamatan pilihan
+      mask_j = (
+          (df_jadwal_raw[kota_col_j].astype(str).str.strip().str.lower() == st.session_state["kota_kab"].strip().lower()) &
+          (df_jadwal_raw[kec_col_j].astype(str).str.strip().str.lower() == str(kecamatan_pilihan).strip().lower())
+      )
+      row_matched = df_jadwal_raw[mask_j]
+      
+      if not row_matched.empty:
+        val_jadwal = str(row_matched.iloc[0][today_col]).strip()
+        # Cek apakah cell jadwal menyebutkan user aktif (misal: "Team 1", atau mengandung string user_spg)
+        user_team_str = st.session_state["user_spg"].strip().lower()
+        val_jadwal_lower = val_jadwal.lower()
+        
+        if val_jadwal == "" or val_jadwal.lower() == "nan" or val_jadwal == "-":
+          is_scheduled_today = False
+          schedule_check_msg = f"❌ Tidak ada jadwal penugasan untuk {st.session_state['user_spg']} di Kecamatan {kecamatan_pilihan} pada tanggal hari ini ({today_date})."
+        elif user_team_str not in val_jadwal_lower and "team" in user_team_str and "team" not in val_jadwal_lower:
+          # Jika format di excel "Team 1" dan user adalah "Team SPG 1"
+          team_digit = ''.join(filter(str.isdigit, user_team_str))
+          excel_digit = ''.join(filter(str.isdigit, val_jadwal_lower))
+          if team_digit and excel_digit and team_digit != excel_digit:
+            is_scheduled_today = False
+            schedule_check_msg = f"❌ Jadwal di Kecamatan {kecamatan_pilihan} pada tanggal {today_date} ditugaskan untuk **{val_jadwal}**, bukan untuk {st.session_state['user_spg']}."
+      else:
+        is_scheduled_today = False
+        schedule_check_msg = f"❌ Kecamatan {kecamatan_pilihan} tidak terdaftar dalam jadwal operasional untuk wilayah {st.session_state['kota_kab']}."
+
+if not is_scheduled_today:
+  st.error(
+      f"🚨 **Akses Masuk Form Dikunci (Sesuai Jadwal SPG.xlsx):**\n\n"
+      f"{schedule_check_msg}\n\n"
+      "⚠️ Anda tidak dapat melakukan entry laporan pada kecamatan atau jadwal ini karena tidak sesuai dengan data penugasan resmi."
+  )
+else:
+  if is_inside_geofence:
+    st.success(f"✅ Jadwal terverifikasi! Anda terdaftar bertugas di Kecamatan {kecamatan_pilihan} hari ini.")
+
+# ====================================================
 # FILTER WARKOP/LKK SESUAI KECAMATAN DARI EXCEL
 # ====================================================
 df_master_excel = load_master_lokasi_excel()
@@ -1318,6 +1393,7 @@ nama_warkop_manual = st.selectbox(
 
 if (
     is_inside_geofence
+    and is_scheduled_today
     and str(nama_spg_manual).strip() != ""
     and str(nama_warkop_manual).strip() != ""
 ):
@@ -1446,6 +1522,8 @@ else:
         "🔒 Form input terkunci karena posisi GPS Anda berada di luar wilayah"
         f" {st.session_state['kota_kab']}."
     )
+  elif not is_scheduled_today:
+    st.warning("🔒 Form input dikunci karena Anda tidak memiliki jadwal tugas di wilayah/tanggal ini.")
   else:
     st.info(
         "ℹ️ Silakan pilih **Nama SPG** dan pastikan **Warkop/LKK** terpilih untuk"
