@@ -1167,21 +1167,12 @@ if not st.session_state["logged_in"]:
       list_spg = [f"Team SPG {i}" for i in range(1, 21)]
       pilihan_user = st.selectbox("👤 Pilih User (Team SPG)", list_spg)
 
-      col_k1, col_k2 = st.columns(2)
+      col_k1, col_k2 = st.columns(1)
       with col_k1:
         pilihan_kota = st.selectbox(
             "🏙️ Wilayah Operasional", ["Surabaya", "Gresik"]
         )
-      with col_k2:
-        daftar_plat_tersedia = load_master_plats()
-        if daftar_plat_tersedia:
-          plat_input = st.selectbox(
-              "🚗 Plat Kendaraan", options=daftar_plat_tersedia
-          )
-        else:
-          plat_input = st.text_input(
-              "🚗 Plat Kendaraan", placeholder="Contoh: L 1234 AB"
-          )
+    
 
       btn_login = st.form_submit_button("Masuk Aplikasi", type="primary")
 
