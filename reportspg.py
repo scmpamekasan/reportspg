@@ -1240,7 +1240,7 @@ if not st.session_state["logged_in"]:
         else:
           st.session_state["logged_in"] = True
           st.session_state["user_spg"] = pilihan_user
-          st.session_state["plat_mobil"] = pilihan_plat_supervisi if st.session_state["login_mode"] == "Supervisi" else "Pribadi/Motor"
+          st.session_state["plat_mobil"] = pilihan_plat_supervisi if st.session_state["login_mode"] == "Supervisi" else "Mobil"
           st.session_state["kota_kab"] = auto_detected_kota
           st.rerun()
 
