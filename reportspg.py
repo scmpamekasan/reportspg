@@ -114,6 +114,16 @@ st.markdown(
         color: #64748b;
         margin-top: 18px;
     }
+    .address-box {
+        background-color: #f8fafc;
+        border-left: 4px solid #3b82f6;
+        padding: 10px 14px;
+        border-radius: 8px;
+        font-size: 0.9rem;
+        color: #334155;
+        margin-top: 6px;
+        margin-bottom: 14px;
+    }
     </style>
     """,
     unsafe_allow_html=True,
@@ -134,6 +144,7 @@ EXPECTED_COLUMNS = [
     "Kota_Kab",
     "Kecamatan",
     "Warkop_LKK",
+    "Alamat_Warkop",
     "Brand_Rokok",
     "Nama_Konsumen",
     "Gender",
@@ -271,7 +282,6 @@ def save_master_spgs(spgs):
 
 
 def get_schedule_info_for_team(team_name):
-  """Mengecek apakah team memiliki jadwal hari ini dan mengembalikan kota serta statusnya."""
   df_j = load_jadwal_spg()
   if df_j.empty:
     return False, "Tidak Ada Jadwal Team Tersebut Untuk Hari Ini", "Surabaya"
@@ -604,6 +614,9 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
       col_warkop_input = st.text_input(
           "Nama Warkop / LKK", placeholder="Contoh: Warkop Barokah"
       )
+      col_alamat_input = st.text_input(
+          "Alamat Warkop", placeholder="Contoh: Jl. Ngagel Tirto No. 10"
+      )
       btn_add_excel = st.form_submit_button("➕ Tambah & Simpan ke Excel")
 
       if btn_add_excel:
@@ -626,18 +639,26 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
               ),
               "Warkop_LKK",
           )
+          alamat_col_name = next(
+              (
+                  c
+                  for c in df_lokasi_excel.columns
+                  if "alamat" in c.lower() or "address" in c.lower()
+              ),
+              "Alamat_Warkop",
+          )
 
           new_row = {
               kec_col_name: col_kec_input.strip(),
               warkop_col_name: col_warkop_input.strip(),
+              alamat_col_name: col_alamat_input.strip() if col_alamat_input else "-"
           }
           df_lokasi_excel = pd.concat(
               [df_lokasi_excel, pd.DataFrame([new_row])], ignore_index=True
           )
           if save_master_lokasi_excel(df_lokasi_excel):
             st.success(
-                f"✅ Warkop '{col_warkop_input.strip()}' di Kecamatan"
-                f" '{col_kec_input.strip()}' berhasil ditambahkan ke"
+                f"✅ Warkop '{col_warkop_input.strip()}' berhasil ditambahkan ke"
                 f" {MASTER_LOKASI_FILE}!"
             )
             st.rerun()
@@ -1132,7 +1153,6 @@ if not st.session_state["logged_in"]:
     list_spg = [f"Team SPG {i}" for i in range(1, 21)]
     pilihan_user = st.selectbox("👤 Pilih User (Team SPG)", list_spg, key="selected_team_login")
 
-    # Cek jadwal & status hari ini secara real-time
     has_schedule, schedule_warning_msg, auto_detected_kota = get_schedule_info_for_team(pilihan_user)
 
     if not has_schedule:
@@ -1368,10 +1388,10 @@ else:
     st.success(f"✅ Jadwal terverifikasi! Anda terdaftar bertugas di Kecamatan {kecamatan_pilihan} hari ini.")
 
 # ====================================================
-# FILTER WARKOP/LKK SESUAI KECAMATAN DARI EXCEL
+# FILTER WARKOP/LKK SESUAI KECAMATAN DARI EXCEL & AMBIL ALAMAT
 # ====================================================
 df_master_excel = load_master_lokasi_excel()
-filtered_warkop_list = []
+filtered_df_warkop = pd.DataFrame()
 
 if not df_master_excel.empty:
   col_kec_excel = next(
@@ -1390,24 +1410,30 @@ if not df_master_excel.empty:
       ),
       None,
   )
+  col_alamat_excel = next(
+      (
+          c
+          for c in df_master_excel.columns
+          if "alamat" in c.lower() or "address" in c.lower()
+      ),
+      None,
+  )
 
   if col_kec_excel and col_warkop_excel:
     mask = (
         df_master_excel[col_kec_excel].astype(str).str.strip().str.lower()
         == str(kecamatan_pilihan).strip().lower()
     )
-    filtered_warkop_list = (
-        df_master_excel[mask][col_warkop_excel].dropna().unique().tolist()
-    )
+    filtered_df_warkop = df_master_excel[mask]
+    if filtered_df_warkop.empty:
+      filtered_df_warkop = df_master_excel.copy()
 
-    if not filtered_warkop_list:
-      filtered_warkop_list = (
-          df_master_excel[col_warkop_excel].dropna().unique().tolist()
-      )
+  if not filtered_df_warkop.empty and col_warkop_excel:
+    filtered_warkop_list = filtered_df_warkop[col_warkop_excel].dropna().unique().tolist()
   else:
-    filtered_warkop_list = (
-        df_master_excel.iloc[:, -1].dropna().unique().tolist()
-    )
+    filtered_warkop_list = ["Warkop Alternatif 1", "Warkop Alternatif 2"]
+else:
+  filtered_warkop_list = ["Warkop Alternatif 1", "Warkop Alternatif 2"]
 
 if not filtered_warkop_list:
   filtered_warkop_list = ["Warkop Alternatif 1", "Warkop Alternatif 2"]
@@ -1415,10 +1441,23 @@ if not filtered_warkop_list:
 nama_warkop_manual = st.selectbox(
     f"Pilih Warkop / LKK di Kecamatan {kecamatan_pilihan}",
     options=filtered_warkop_list,
-    help=(
-        "Daftar warkop difilter otomatis dari file Master WarkopLKK.xlsx sesuai"
-        " kecamatan aktif"
-    ),
+    help="Daftar warkop difilter otomatis dari file Master WarkopLKK.xlsx sesuai kecamatan aktif",
+)
+
+# --- MENAMPILKAN ALAMAT WARKOP OTOMATIS DI BAWAHNYA ---
+alamat_warkop_terpilih = "-"
+if not df_master_excel.empty and col_warkop_excel and col_alamat_excel:
+  match_row = df_master_excel[df_master_excel[col_warkop_excel].astype(str).str.strip() == str(nama_warkop_manual).strip()]
+  if not match_row.empty:
+    alamat_warkop_terpilih = str(match_row.iloc[0][col_alamat_excel])
+
+st.markdown(
+    f"""
+    <div class="address-box">
+        📍 <b>Alamat Warkop / LKK:</b> {alamat_warkop_terpilih}
+    </div>
+    """,
+    unsafe_allow_html=True,
 )
 
 if (
@@ -1528,6 +1567,7 @@ if (
             "Kota_Kab": st.session_state["kota_kab"],
             "Kecamatan": kecamatan_pilihan,
             "Warkop_LKK": str(nama_warkop_manual).strip(),
+            "Alamat_Warkop": alamat_warkop_terpilih,
             "Brand_Rokok": brand_entry,
             "Nama_Konsumen": nama_konsumen.strip(),
             "Gender": gender_entry,
