@@ -26,8 +26,8 @@ st.markdown(
     """
     <style>
     .stApp {
-        background-color: #0e1117;
-        color: #ffffff;
+        background-color: #FDFBF7;
+        color: #333333;
     }
     .login-header {
         background: linear-gradient(135deg, #d32f2f 0%, #b71c1c 100%);
