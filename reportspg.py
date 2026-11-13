@@ -20,14 +20,14 @@ st.set_page_config(
 )
 
 # ====================================================
-# CUSTOM CSS UNTUK UI MODERN & BOTTOM NAVIGATION BAR
+# CUSTOM CSS UNTUK UI MODERN & ADMIN PANEL GRID
 # ====================================================
 st.markdown(
     """
     <style>
     .stApp {
         background-color: #f4f6f9;
-        margin-bottom: 70px; /* Ruang agar konten bawah tidak tertutup nav bar */
+        margin-bottom: 50px;
     }
     .login-header {
         background: linear-gradient(135deg, #d32f2f 0%, #b71c1c 100%);
@@ -435,9 +435,6 @@ if "admin_logged_in" not in st.session_state:
 if "admin_view" not in st.session_state:
   st.session_state["admin_view"] = "Dashboard"
 
-if "menu_bawah" not in st.session_state:
-  st.session_state["menu_bawah"] = "Dashboard"
-
 if "draft_konsumen" not in st.session_state:
   st.session_state["draft_konsumen"] = ""
 if "draft_nohp" not in st.session_state:
@@ -473,25 +470,8 @@ if not st.session_state["logged_in"]:
     else:
       st.success("🟢 Status: Admin Aktif")
       st.markdown("---")
-      if st.button(
-          "🏠 Dashboard Utama", use_container_width=True, type="primary"
-      ):
+      if st.button("🏠 Menu Utama Admin", use_container_width=True, type="primary"):
         st.session_state["admin_view"] = "Dashboard"
-        st.rerun()
-      if st.button("👥 Master Team & Brand", use_container_width=True):
-        st.session_state["admin_view"] = "Master_Team"
-        st.rerun()
-      if st.button("🚗 Master Plat Kendaraan", use_container_width=True):
-        st.session_state["admin_view"] = "Master_Plat"
-        st.rerun()
-      if st.button("👩‍💼 Master Nama SPG", use_container_width=True):
-        st.session_state["admin_view"] = "Master_SPG"
-        st.rerun()
-      if st.button("🚬 Master Merek Rokok", use_container_width=True):
-        st.session_state["admin_view"] = "Master_Brand"
-        st.rerun()
-      if st.button("📍 Master Lokasi Warkop (Excel)", use_container_width=True):
-        st.session_state["admin_view"] = "Master_Lokasi"
         st.rerun()
       if st.button("📊 Analitik & Rekap All", use_container_width=True):
         st.session_state["admin_view"] = "Analitik"
@@ -499,7 +479,7 @@ if not st.session_state["logged_in"]:
       if st.button("🗺️ Peta Rute All User", use_container_width=True):
         st.session_state["admin_view"] = "Peta_Rute"
         st.rerun()
-
+      
       st.markdown("---")
       if st.button("🔒 Keluar dari Mode Admin", use_container_width=True):
         st.session_state["admin_logged_in"] = False
@@ -510,7 +490,7 @@ if not st.session_state["logged_in"]:
 # ====================================================
 if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
 
-  # --- TAMPILAN MASTER PLAT KENDARAAN (TAMBAH & HAPUS FLEKSIBEL) ---
+  # --- TAMPILAN MASTER PLAT KENDARAAN ---
   if st.session_state["admin_view"] == "Master_Plat":
     st.markdown("## 🚗 Master Data: Plat Nomor Kendaraan Operasional")
     st.caption("Tambah atau hapus daftar plat nomor kendaraan operasional secara fleksibel.")
@@ -549,7 +529,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
           st.rerun()
 
     st.markdown("---")
-    if st.button("⬅️ Kembali ke Dashboard"):
+    if st.button("⬅️ Kembali ke Dashboard Admin"):
       st.session_state["admin_view"] = "Dashboard"
       st.rerun()
     st.stop()
@@ -595,7 +575,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
     st.dataframe(pd.DataFrame(summary_list), use_container_width=True)
 
     st.markdown("---")
-    if st.button("⬅️ Kembali ke Dashboard"):
+    if st.button("⬅️ Kembali ke Dashboard Admin"):
       st.session_state["admin_view"] = "Dashboard"
       st.rerun()
     st.stop()
@@ -637,7 +617,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
           st.rerun()
 
     st.markdown("---")
-    if st.button("⬅️ Kembali ke Dashboard"):
+    if st.button("⬅️ Kembali ke Dashboard Admin"):
       st.session_state["admin_view"] = "Dashboard"
       st.rerun()
     st.stop()
@@ -691,7 +671,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
           st.rerun()
 
     st.markdown("---")
-    if st.button("⬅️ Kembali ke Dashboard"):
+    if st.button("⬅️ Kembali ke Dashboard Admin"):
       st.session_state["admin_view"] = "Dashboard"
       st.rerun()
     st.stop()
@@ -755,7 +735,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
       st.warning("File Excel master warkop kosong atau tidak ditemukan formatnya.")
 
     st.markdown("---")
-    if st.button("⬅️ Kembali ke Dashboard"):
+    if st.button("⬅️ Kembali ke Dashboard Admin"):
       st.session_state["admin_view"] = "Dashboard"
       st.rerun()
     st.stop()
@@ -828,7 +808,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
       st.info("Belum ada data untuk ditampilkan dalam grafik analitik.")
 
     st.markdown("---")
-    if st.button("⬅️ Kembali ke Dashboard"):
+    if st.button("⬅️ Kembali ke Dashboard Admin"):
       st.session_state["admin_view"] = "Dashboard"
       st.rerun()
     st.stop()
@@ -930,50 +910,48 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
       st.info("Belum ada data koordinat GPS yang terekam pada sistem.")
 
     st.markdown("---")
-    if st.button("⬅️ Kembali ke Dashboard"):
+    if st.button("⬅️ Kembali ke Dashboard Admin"):
       st.session_state["admin_view"] = "Dashboard"
       st.rerun()
     st.stop()
 
-  # --- DASHBOARD ADMIN UTAMA ---
-  st.markdown("## 📊 Dashboard Admin & Manajemen Lapangan")
-  st.caption("Pilih menu master data atau pantau rekapitulasi tim secara real-time.")
+  # --- DASHBOARD ADMIN UTAMA (DENGAN TAMPILAN PANEL GRID MODERN) ---
+  st.markdown("## 📊 Panel Menu Admin & Supervisor")
+  st.caption("Pusat kendali dan manajemen operasional lapangan secara terpusat.")
 
-  st.markdown("#### 📦 Master Data")
-  col_m1, col_m2, col_m3 = st.columns(3)
+  st.markdown("#### 📦 Master Data Operasional")
+  col_m1, col_m2 = st.columns(2)
   with col_m1:
-    if st.button("👥 Master Team & Brand\nAtur brand rokok per team", use_container_width=True):
+    if st.button("👥 Master Team & Brand", use_container_width=True):
       st.session_state["admin_view"] = "Master_Team"
       st.rerun()
-    if st.button("👩‍💼 Nama SPG\nKelola daftar SPG", use_container_width=True):
+    if st.button("👩‍💼 Master Nama SPG", use_container_width=True):
       st.session_state["admin_view"] = "Master_SPG"
       st.rerun()
+    if st.button("📍 Master Lokasi Warkop (Excel)", use_container_width=True):
+      st.session_state["admin_view"] = "Master_Lokasi"
+      st.rerun()
   with col_m2:
-    if st.button("🚗 Master Plat Kendaraan\nTambah & hapus plat mobil", use_container_width=True):
+    if st.button("🚗 Master Plat Kendaraan", use_container_width=True):
       st.session_state["admin_view"] = "Master_Plat"
       st.rerun()
-    if st.button("🚬 Merek Rokok & Target\nKelola daftar merek & target", use_container_width=True):
+    if st.button("🚬 Master Merek Rokok & Target", use_container_width=True):
       st.session_state["admin_view"] = "Master_Brand"
       st.rerun()
-  with col_m3:
-    if st.button("📍 Lokasi Warkop (Excel)\nKelola dari Master Warkop", use_container_width=True):
-      st.session_state["admin_view"] = "Master_Lokasi"
+    if st.button("🚪 Keluar dari Mode Admin", use_container_width=True):
+      st.session_state["admin_logged_in"] = False
       st.rerun()
 
   st.markdown("---")
-  st.markdown("#### 📈 Analitik & Pemetaan")
-  col_a1, col_a2, col_a3 = st.columns(3)
+  st.markdown("#### 📈 Analitik & Pemetaan Lapangan")
+  col_a1, col_a2 = st.columns(2)
   with col_a1:
-    if st.button("📊 Analitik Lapangan\nDemografi & Kecamatan", use_container_width=True):
+    if st.button("📊 Analitik & Rekap All", use_container_width=True):
       st.session_state["admin_view"] = "Analitik"
       st.rerun()
   with col_a2:
-    if st.button("🗺️ Peta Rute All User\nFilter Team/SPG/Tanggal", use_container_width=True):
+    if st.button("🗺️ Peta Rute All User", use_container_width=True):
       st.session_state["admin_view"] = "Peta_Rute"
-      st.rerun()
-  with col_a3:
-    if st.button("⬅️ Keluar Admin", use_container_width=True):
-      st.session_state["admin_logged_in"] = False
       st.rerun()
 
   st.markdown("---")
@@ -1066,7 +1044,6 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
         df_all_supervisi["Jumlah_Kontak_Manual"], errors="coerce"
     ).fillna(0).astype(int)
 
-  # Filter Team untuk Rekapitulasi Combine
   teams_spg = df_all_users["Promotor"].dropna().unique().tolist() if not df_all_users.empty else []
   teams_sup = df_all_supervisi["Promotor"].dropna().unique().tolist() if not df_all_supervisi.empty else []
   all_teams_lkk = ["Semua Team"] + sorted(list(set(teams_spg + teams_sup)))
@@ -1162,7 +1139,6 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
 
     st.dataframe(df_combine_admin, use_container_width=True)
 
-    # Tombol Export Excel Rekap Combine LKK
     output_lkk = BytesIO()
     with pd.ExcelWriter(output_lkk, engine="openpyxl") as writer:
       df_combine_admin.to_excel(writer, index=False, sheet_name="Rekap Combine LKK")
@@ -1184,9 +1160,8 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
   # ====================================================
   # MENU HAPUS DATA KONTAK SUPERVISI (REKAP LKK)
   # ====================================================
-  with st.expander("🗑️ Menu Hapus Data Kontak Supervisi / Rekap LKK (Per Row / Hari / Minggu / All Data)", expanded=False):
+  with st.expander("🗑️ Menu Hapus Data Kontak Supervisi / Rekap LKK", expanded=False):
     if not df_all_supervisi.empty:
-      st.warning("⚠️ Perhatian: Menghapus log kontak Supervisi akan memengaruhi angka 'Jumlah_Kontak_Manual' pada tabel Rekapitulasi Combine Per Titik LKK di atas.")
       tab_sup_row, tab_sup_day, tab_sup_week, tab_sup_all = st.tabs([
           "🔹 Hapus per Row",
           "📅 Hapus per Hari",
@@ -1315,8 +1290,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
     st.markdown("---")
     st.markdown("#### 📑 Log Detail Transaksi All User (SPG)")
 
-    with st.expander("🗑️ Menu Hapus Log Detail Transaksi SPG (Per Row / Hari / Minggu / All Data)", expanded=False):
-      st.warning("⚠️ Perhatian: Data yang sudah dihapus dari database tidak dapat dikembalikan.")
+    with st.expander("🗑️ Menu Hapus Log Detail Transaksi SPG", expanded=False):
       tab_del_row, tab_del_day, tab_del_week, tab_del_all = st.tabs([
           "🔹 Hapus per Row",
           "📅 Hapus per Hari",
@@ -1438,7 +1412,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
   st.stop()
 
 # ====================================================
-# HALAMAN LOGIN UTAMA (LOGIN SPG DENGAN NAMA TEAM, LOGIN SUPERVISI DENGAN PILIHAN TEAM & PLAT KENDARAAN)
+# HALAMAN LOGIN UTAMA (LOGIN SPG & SUPERVISI)
 # ====================================================
 if not st.session_state["logged_in"]:
   _, col_center, _ = st.columns([0.02, 0.96, 0.02])
@@ -1480,7 +1454,6 @@ if not st.session_state["logged_in"]:
           on_change=reset_session_on_user_change,
       )
 
-      # Jika mode Supervisi, tampilkan juga opsi pilihan Plat Nomor Kendaraan secara fleksibel
       pilihan_plat_supervisi = ""
       if st.session_state["login_mode"] == "Supervisi":
         daftar_plat_master = load_master_plat_kendaraan()
@@ -1552,7 +1525,7 @@ with col_logout:
 st.markdown("---")
 
 # ====================================================
-# BOTTOM NAVIGATION BAR (FIXED DI BAWAH LAYAR)
+# BOTTOM NAVIGATION BAR (KHUSUS APLIKASI LAPANGAN)
 # ====================================================
 st.markdown(
     """
@@ -1575,33 +1548,31 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# Kontainer tombol bilah navigasi bawah
 c_nav1, c_nav2, c_nav3, c_nav4, c_nav5 = st.columns(5)
 with c_nav1:
-  if st.button("🏠 Dashboard", use_container_width=True, type="primary" if st.session_state["menu_bawah"] == "Dashboard" else "secondary"):
+  if st.button("🏠 Dashboard", use_container_width=True, type="primary" if st.session_state.get("menu_bawah", "Dashboard") == "Dashboard" else "secondary"):
     st.session_state["menu_bawah"] = "Dashboard"
     st.rerun()
 with c_nav2:
-  if st.button("⏱️ Hari Ini", use_container_width=True, type="primary" if st.session_state["menu_bawah"] == "Hari Ini" else "secondary"):
+  if st.button("⏱️ Hari Ini", use_container_width=True, type="primary" if st.session_state.get("menu_bawah") == "Hari Ini" else "secondary"):
     st.session_state["menu_bawah"] = "Hari Ini"
     st.rerun()
 with c_nav3:
-  if st.button("👥 Shift", use_container_width=True, type="primary" if st.session_state["menu_bawah"] == "Shift" else "secondary"):
+  if st.button("👥 Shift", use_container_width=True, type="primary" if st.session_state.get("menu_bawah") == "Shift" else "secondary"):
     st.session_state["menu_bawah"] = "Shift"
     st.rerun()
 with c_nav4:
-  if st.button("📊 Rekap", use_container_width=True, type="primary" if st.session_state["menu_bawah"] == "Rekap" else "secondary"):
+  if st.button("📊 Rekap", use_container_width=True, type="primary" if st.session_state.get("menu_bawah") == "Rekap" else "secondary"):
     st.session_state["menu_bawah"] = "Rekap"
     st.rerun()
 with c_nav5:
-  if st.button("📋 Absensi", use_container_width=True, type="primary" if st.session_state["menu_bawah"] == "Absensi" else "secondary"):
+  if st.button("📋 Absensi", use_container_width=True, type="primary" if st.session_state.get("menu_bawah") == "Absensi" else "secondary"):
     st.session_state["menu_bawah"] = "Absensi"
     st.rerun()
 
 st.markdown("---")
 
-# Menampilkan konten berdasarkan menu aktif dari Bottom Navigation Bar
-aktif_menu = st.session_state["menu_bawah"]
+aktif_menu = st.session_state.get("menu_bawah", "Dashboard")
 
 if aktif_menu == "Hari Ini":
   st.markdown("### ⏱️ Aktivitas & Kunjungan Hari Ini")
@@ -1807,7 +1778,6 @@ kecamatan_pilihan = st.selectbox(
     help="Kecamatan difilter otomatis sesuai penugasan jadwal hari ini"
 )
 
-# Filter warkop/LKK
 df_master_excel = load_master_lokasi_excel()
 filtered_df_warkop = pd.DataFrame()
 
@@ -1841,7 +1811,6 @@ nama_warkop_manual = st.selectbox(
     help="Daftar warkop difilter otomatis dari Master WarkopLKK.xlsx",
 )
 
-# Alamat warkop otomatis di bawahnya
 alamat_warkop_terpilih = "-"
 if not df_master_excel.empty and col_warkop_excel and col_alamat_excel:
   match_row = df_master_excel[df_master_excel[col_warkop_excel].astype(str).str.strip() == str(nama_warkop_manual).strip()]
@@ -1858,14 +1827,13 @@ st.markdown(
 )
 
 # ====================================================
-# JIKA KONDISI LOGIN SUPERVISI: TAMPILKAN MENU MONITORING & ENTRY KONTAK
+# JIKA KONDISI LOGIN SUPERVISI
 # ====================================================
 if st.session_state["login_mode"] == "Supervisi":
   st.markdown("---")
   st.markdown(f"### 👀 Dashboard Monitoring & Entry Supervisi: {st.session_state['user_spg']} (Plat Mobil: `{st.session_state['plat_mobil']}`)")
   st.caption("Supervisor menginput jumlah kontak konsumen di warkop ini secara manual.")
 
-  # Form Supervisi untuk Entry Manual Jumlah Kontak Konsumen
   with st.form("form_entry_kontak_supervisi"):
     st.markdown("#### 📝 Input Manual Jumlah Kontak Konsumen (Oleh Supervisi)")
     jumlah_kontak_input = st.number_input(
@@ -1895,7 +1863,6 @@ if st.session_state["login_mode"] == "Supervisi":
 
   st.markdown("---")
 
-  # Ambil data dari database transaksi SPG & database kontak supervisi
   df_all_db = load_database()
   df_sup_db = load_supervisi_database()
 
@@ -1907,13 +1874,11 @@ if st.session_state["login_mode"] == "Supervisi":
   if not df_sup_db.empty and "Promotor" in df_sup_db.columns:
     df_current_team_sup = df_sup_db[df_sup_db["Promotor"] == st.session_state["user_spg"]].copy()
 
-  # Filter transaksi SPG per LKK aktif
   df_lkk_active_spg = pd.DataFrame()
   if not df_current_team_spg.empty:
     df_current_team_spg["Jumlah_Bungkus"] = pd.to_numeric(df_current_team_spg["Jumlah_Bungkus"], errors="coerce").fillna(0)
     df_lkk_active_spg = df_current_team_spg[df_current_team_spg["Warkop_LKK"].astype(str).str.strip() == str(nama_warkop_manual).strip()]
 
-  # Ambil total kontak manual supervisi terbaru untuk LKK aktif ini
   kontak_manual_lkk_ini = 0
   if not df_current_team_sup.empty:
     df_lkk_active_sup = df_current_team_sup[df_current_team_sup["Warkop_LKK"].astype(str).str.strip() == str(nama_warkop_manual).strip()]
@@ -2007,7 +1972,7 @@ if st.session_state["login_mode"] == "Supervisi":
   st.stop()
 
 # ====================================================
-# JIKA KONDISI LOGIN SPG: TAMPILKAN FORM INPUT LAPORAN
+# JIKA KONDISI LOGIN SPG
 # ====================================================
 daftar_master_spg = load_master_spgs()
 if daftar_master_spg:
@@ -2210,7 +2175,6 @@ if not df_user_rekap.empty:
   st.markdown("---")
   st.markdown("#### 📑 Log Detail Transaksi & Pengaturan")
   
-  # Kolom Plat_Mobil dihapus dari tampilan log detail transaksi SPG
   cols_to_drop_spg = ["Tanggal", "Plat_Mobil"] if "Plat_Mobil" in df_user_rekap.columns else ["Tanggal"]
   st.dataframe(
       df_user_rekap.drop(columns=cols_to_drop_spg, errors="ignore"),
