@@ -20,13 +20,14 @@ st.set_page_config(
 )
 
 # ====================================================
-# CUSTOM CSS UNTUK UI MODERN & TOMBOL BESAR LOGIN
+# CUSTOM CSS UNTUK UI MODERN & KPI CARD SEPERTI GAMBAR
 # ====================================================
 st.markdown(
     """
     <style>
     .stApp {
-        background-color: #f4f6f9;
+        background-color: #0e1117;
+        color: #ffffff;
     }
     .login-header {
         background: linear-gradient(135deg, #d32f2f 0%, #b71c1c 100%);
@@ -49,11 +50,11 @@ st.markdown(
         opacity: 0.9;
     }
     [data-testid="stForm"] {
-        background-color: #ffffff;
+        background-color: #161b22;
         padding: 26px 24px;
         border-radius: 16px;
-        border: 1px solid #e6e9ef;
-        box-shadow: 0 6px 18px rgba(0, 0, 0, 0.06);
+        border: 1px solid #30363d;
+        box-shadow: 0 6px 18px rgba(0, 0, 0, 0.2);
     }
     [data-testid="stFormSubmitButton"] > button {
         width: 100%;
@@ -88,39 +89,67 @@ st.markdown(
         font-size: 0.88rem;
         color: #cbd5e1;
     }
-    .kpi-card {
-        background-color: #ffffff;
-        padding: 16px;
-        border-radius: 12px;
-        border-left: 5px solid #d32f2f;
-        box-shadow: 0 2px 10px rgba(0,0,0,0.05);
-        text-align: center;
-        margin-bottom: 10px;
+    
+    /* KPI Card Style Sesuai Gambar Referensi */
+    .dashboard-card {
+        background-color: #161b22;
+        border: 1px solid #30363d;
+        padding: 22px;
+        border-radius: 16px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        margin-bottom: 16px;
     }
-    .kpi-value {
-        font-size: 1.5rem;
+    .card-value {
+        font-size: 2.2rem;
         font-weight: 800;
-        color: #1e293b;
+        color: #ffffff;
+        margin-bottom: 4px;
+        line-height: 1.2;
     }
-    .kpi-label {
-        font-size: 0.8rem;
-        color: #64748b;
+    .card-value-green {
+        font-size: 2.2rem;
+        font-weight: 800;
+        color: #2ea043;
+        margin-bottom: 4px;
+        line-height: 1.2;
+    }
+    .card-subtext {
+        font-size: 0.9rem;
+        color: #8b949e;
+        margin-bottom: 8px;
+    }
+    .card-label {
+        font-size: 1.05rem;
+        color: #c9d1d9;
         font-weight: 600;
-        text-transform: uppercase;
     }
+    .progress-bar-container {
+        width: 100%;
+        background-color: #30363d;
+        border-radius: 6px;
+        height: 8px;
+        margin: 12px 0 8px 0;
+        overflow: hidden;
+    }
+    .progress-bar-fill {
+        height: 100%;
+        background-color: #2ea043;
+        border-radius: 6px;
+    }
+
     .footer-note {
         text-align: center;
         font-size: 0.8rem;
-        color: #64748b;
+        color: #8b949e;
         margin-top: 18px;
     }
     .address-box {
-        background-color: #f8fafc;
+        background-color: #161b22;
         border-left: 4px solid #3b82f6;
         padding: 10px 14px;
         border-radius: 8px;
         font-size: 0.9rem;
-        color: #334155;
+        color: #c9d1d9;
         margin-top: 6px;
         margin-bottom: 14px;
     }
@@ -176,13 +205,7 @@ EXPECTED_SUPERVISI_COLUMNS = [
 # FUNGSI BANTUAN MINGGU (SABTU s/d JUMAT) AKURAT
 # ====================================================
 def get_custom_week_info(dt):
-  """Menghitung nomor minggu dan rentang tanggal (Sabtu s/d Jumat).
-
-  Aturan:
-  - Hari Sabtu s.d. Jumat berikutnya masuk ke dalam satu minggu yang sama.
-  - Nomor minggu menggunakan standar ISO dari tanggal Jumat di minggu tersebut
-  agar konsisten.
-  """
+  """Menghitung nomor minggu dan rentang tanggal (Sabtu s/d Jumat)."""
   if pd.isna(dt):
     return "-", "-"
   d = pd.to_datetime(dt).date()
@@ -1176,34 +1199,112 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
         df_all_users["Jumlah_Bungkus"], errors="coerce"
     ).fillna(0)
 
-    total_omset = int(df_all_users["Jumlah_Bungkus"].sum())
-    total_konsumen = len(df_all_users)
-    total_warkop = df_all_users["Warkop_LKK"].nunique()
-    total_team_aktif = df_all_users["Promotor"].nunique()
+    # Perhitungan KPI Card Lengkap Omset & Konsumen
+    today_dt = datetime.utcnow() + timedelta(hours=7)
+    today_str = today_dt.strftime("%d-%m-%Y")
+    current_month_str = today_dt.strftime("%m-%Y")
+    current_week_label, _ = get_custom_week_info(today_dt)
 
-    k1, k2, k3, k4 = st.columns(4)
-    with k1:
+    df_today = df_all_users[df_all_users["Tanggal"] == today_str]
+    omset_hari_ini = int(df_today["Jumlah_Bungkus"].sum())
+    konsumen_hari_ini = len(df_today)
+
+    # Hitung Target Harian otomatis berdasarkan jumlah brand/SPG atau default target team
+    target_hari_ini = max(1, len(df_today["Promotor"].unique()) * 80) if not df_today.empty else 100
+    persen_pencapaian = int((omset_hari_ini / target_hari_ini) * 100) if target_hari_ini > 0 else 0
+
+    df_week = df_all_users[df_all_users["Periode_Minggu"] == current_week_label]
+    omset_minggu_ini = int(df_week["Jumlah_Bungkus"].sum())
+    konsumen_minggu_ini = len(df_week)
+
+    df_all_users["Bulan_Tahun"] = df_all_users["Waktu_Dt"].dt.strftime("%m-%Y")
+    df_month = df_all_users[df_all_users["Bulan_Tahun"] == current_month_str]
+    omset_bulan_ini = int(df_month["Jumlah_Bungkus"].sum())
+    konsumen_bulan_ini = len(df_month)
+
+    # Baris 1: Omset Hari Ini, Pencapaian Omset Hari Ini, Konsumen Beli Hari Ini
+    kpi_col1, kpi_col2, kpi_col3 = st.columns(3)
+    with kpi_col1:
       st.markdown(
-          f'<div class="kpi-card"><div class="kpi-value">{total_omset:,}</div>'
-          '<div class="kpi-label">Total Omset</div></div>',
+          f"""
+          <div class="dashboard-card">
+              <div class="card-value">{omset_hari_ini:,} bks</div>
+              <div class="card-subtext">dari {target_hari_ini} target bks</div>
+              <div class="card-label">Omset Hari Ini</div>
+          </div>
+          """,
           unsafe_allow_html=True,
       )
-    with k2:
+    with kpi_col2:
+      bar_width = min(persen_pencapaian, 100)
       st.markdown(
-          f'<div class="kpi-card"><div class="kpi-value">{total_konsumen:,}'
-          '</div><div class="kpi-label">Konsumen Beli</div></div>',
+          f"""
+          <div class="dashboard-card">
+              <div class="card-value-green">{persen_pencapaian}%</div>
+              <div class="progress-bar-container">
+                  <div class="progress-bar-fill" style="width: {bar_width}%;"></div>
+              </div>
+              <div class="card-label" style="margin-top: 4px;">Pencapaian Omset Hari Ini</div>
+          </div>
+          """,
           unsafe_allow_html=True,
       )
-    with k3:
+    with kpi_col3:
       st.markdown(
-          f'<div class="kpi-card"><div class="kpi-value">{total_warkop:,}</div>'
-          '<div class="kpi-label">Titik Warkop</div></div>',
+          f"""
+          <div class="dashboard-card">
+              <div class="card-value">{konsumen_hari_ini:,}</div>
+              <div class="card-subtext" style="visibility: hidden;">-</div>
+              <div class="card-label">Konsumen Beli Hari Ini</div>
+          </div>
+          """,
           unsafe_allow_html=True,
       )
-    with k4:
+
+    # Baris 2: Omset Minggu Ini, Konsumen Minggu Ini, Omset Bulan Ini, Konsumen Beli Bulan Ini
+    kpi_col4, kpi_col5, kpi_col6, kpi_col7 = st.columns(4)
+    with kpi_col4:
       st.markdown(
-          f'<div class="kpi-card"><div class="kpi-value">{total_team_aktif}'
-          '</div><div class="kpi-label">Team Aktif</div></div>',
+          f"""
+          <div class="dashboard-card">
+              <div class="card-value">{omset_minggu_ini:,} bks</div>
+              <div class="card-subtext" style="visibility: hidden;">-</div>
+              <div class="card-label">Omset Minggu Ini</div>
+          </div>
+          """,
+          unsafe_allow_html=True,
+      )
+    with kpi_col5:
+      st.markdown(
+          f"""
+          <div class="dashboard-card">
+              <div class="card-value">{konsumen_minggu_ini:,}</div>
+              <div class="card-subtext" style="visibility: hidden;">-</div>
+              <div class="card-label">Konsumen Minggu Ini</div>
+          </div>
+          """,
+          unsafe_allow_html=True,
+      )
+    with kpi_col6:
+      st.markdown(
+          f"""
+          <div class="dashboard-card">
+              <div class="card-value">{omset_bulan_ini:,} bks</div>
+              <div class="card-subtext" style="visibility: hidden;">-</div>
+              <div class="card-label">Omset Bulan Ini</div>
+          </div>
+          """,
+          unsafe_allow_html=True,
+      )
+    with kpi_col7:
+      st.markdown(
+          f"""
+          <div class="dashboard-card">
+              <div class="card-value">{konsumen_bulan_ini:,}</div>
+              <div class="card-subtext" style="visibility: hidden;">-</div>
+              <div class="card-label">Konsumen Beli Bulan Ini</div>
+          </div>
+          """,
           unsafe_allow_html=True,
       )
 
@@ -1317,7 +1418,6 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
           axis=1,
       )
 
-      # Susun urutan kolom (Periode_Minggu tepat di sebelah Tanggal)
       cols_lb_order = [
           "Tanggal",
           "Periode_Minggu",
@@ -2475,15 +2575,15 @@ if st.session_state["login_mode"] == "Supervisi":
   col_mon1, col_mon2, col_mon3, col_mon4 = st.columns(4)
   with col_mon1:
     st.markdown(
-        f'<div class="kpi-card"><div class="kpi-value">{kontak_manual_lkk_ini}</div>'
-        '<div class="kpi-label">Kontak (Input Supervisi)</div></div>',
+        f'<div class="dashboard-card"><div class="card-value">{kontak_manual_lkk_ini}</div>'
+        '<div class="card-label">Kontak (Input Supervisi)</div></div>',
         unsafe_allow_html=True,
     )
   with col_mon2:
     total_konsumen_beli = len(df_lkk_active_spg)
     st.markdown(
-        f'<div class="kpi-card"><div class="kpi-value">{total_konsumen_beli}</div>'
-        '<div class="kpi-label">Konsumen Beli (SPG)</div></div>',
+        f'<div class="dashboard-card"><div class="card-value">{total_konsumen_beli}</div>'
+        '<div class="card-label">Konsumen Beli (SPG)</div></div>',
         unsafe_allow_html=True,
     )
   with col_mon3:
@@ -2493,8 +2593,8 @@ if st.session_state["login_mode"] == "Supervisi":
         else 0
     )
     st.markdown(
-        f'<div class="kpi-card"><div class="kpi-value">{total_omset_lkk:,} bks</div>'
-        '<div class="kpi-label">Omset LKK Ini</div></div>',
+        f'<div class="dashboard-card"><div class="card-value">{total_omset_lkk:,} bks</div>'
+        '<div class="card-label">Omset LKK Ini</div></div>',
         unsafe_allow_html=True,
     )
   with col_mon4:
@@ -2506,10 +2606,8 @@ if st.session_state["login_mode"] == "Supervisi":
         else "Belum ada SPG"
     )
     st.markdown(
-        f'<div class="kpi-card" style="border-left-color: #3b82f6;"><div'
-        f' class="kpi-value" style="font-size: 1.0rem; padding-top:'
-        f' 6px;">{spg_list_str}</div>'
-        '<div class="kpi-label">SPG Bertugas</div></div>',
+        f'<div class="dashboard-card"><div class="card-value" style="font-size: 1.1rem; padding-top: 6px;">{spg_list_str}</div>'
+        '<div class="card-label">SPG Bertugas</div></div>',
         unsafe_allow_html=True,
     )
 
@@ -2787,7 +2885,6 @@ if not df_user_rekap.empty:
   df_user_rekap = add_custom_week_columns(df_user_rekap, "Waktu_Dt")
   df_user_rekap["Nama_SPG"] = df_user_rekap["Nama_SPG"].fillna("-")
 
-  # Tambahan Filter Minggu pada Tampilan Evaluasi User SPG
   all_weeks_user = sorted(
       df_user_rekap["Periode_Minggu"].dropna().unique().tolist(), reverse=True
   )
@@ -2856,7 +2953,6 @@ if not df_user_rekap.empty:
       axis=1,
   )
 
-  # Susun urutan kolom (Periode_Minggu tepat di sebelah Tanggal)
   cols_eval_order = [
       "Tanggal",
       "Periode_Minggu",
@@ -2896,7 +2992,8 @@ if not df_user_rekap.empty:
 
   output = BytesIO()
   with pd.ExcelWriter(output, engine="openpyxl") as writer:
-    df_eval_spg.to_excel(
+    df_eval_sub_excel = df_eval_spg
+    df_eval_sub_excel.to_excel(
         writer, index=False, sheet_name="Evaluasi Harian SPG"
     )
     df_user_rekap_filtered.drop(
