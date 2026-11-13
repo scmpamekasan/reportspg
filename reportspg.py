@@ -151,7 +151,6 @@ def load_database():
   if os.path.exists(DB_FILE):
     try:
       df = pd.read_csv(DB_FILE)
-      # Migrasi kolom lama 'Usia' menjadi 'Range_Umur' jika diperlukan
       if "Usia" in df.columns and "Range_Umur" not in df.columns:
         df = df.rename(columns={"Usia": "Range_Umur"})
       for col in EXPECTED_COLUMNS:
@@ -269,6 +268,46 @@ def load_master_spgs():
 def save_master_spgs(spgs):
   with open(MASTER_SPG_FILE, "w", encoding="utf-8") as f:
     json.dump(spgs, f, ensure_ascii=False, indent=2)
+
+
+def get_kota_from_schedule(team_name):
+  """Mendeteksi kota operasional team berdasarkan Jadwal SPG.xlsx untuk hari ini."""
+  df_j = load_jadwal_spg()
+  if df_j.empty:
+    return "Surabaya"  # Fallback default
+  
+  kota_col = next((c for c in df_j.columns if "kota" in c.lower()), None)
+  if not kota_col:
+    return "Surabaya"
+    
+  today_date = datetime.now().date()
+  today_col = None
+  for c in df_j.columns:
+    try:
+      parsed_dt = pd.to_datetime(c).date()
+      if parsed_dt == today_date:
+        today_col = c
+        break
+    except Exception:
+      continue
+      
+  if not today_col:
+    return "Surabaya"
+    
+  team_clean = team_name.strip().lower()
+  team_digit = ''.join(filter(str.isdigit, team_clean))
+  
+  for _, row in df_j.iterrows():
+    val_cell = str(row[today_col]).strip()
+    if val_cell and val_cell.lower() != "nan" and val_cell != "-":
+      val_lower = val_cell.lower()
+      cell_digit = ''.join(filter(str.isdigit, val_lower))
+      if team_clean in val_lower or (team_digit and cell_digit and team_digit == cell_digit):
+        found_kota = str(row[kota_col]).strip()
+        if found_kota:
+          return found_kota
+          
+  return "Surabaya"  # Fallback jika tidak ditemukan
 
 
 # ====================================================
@@ -1085,19 +1124,22 @@ if not st.session_state["logged_in"]:
     with st.form("form_login"):
       st.markdown("#### 🚀 Masuk ke Akun Operasional")
       st.caption(
-          "Pilih tim (1-20) dan wilayah Anda, lalu masuk tanpa kata sandi."
+          "Pilih tim (1-20). Wilayah operasional akan otomatis terdeteksi sesuai jadwal."
       )
 
       list_spg = [f"Team SPG {i}" for i in range(1, 21)]
       pilihan_user = st.selectbox("👤 Pilih User (Team SPG)", list_spg)
-      pilihan_kota = st.selectbox("🏙️ Wilayah Operasional", ["Surabaya", "Gresik"])
+
+      # Deteksi otomatis kota berdasarkan jadwal hari ini untuk preview info login
+      auto_detected_kota = get_kota_from_schedule(pilihan_user)
+      st.info(f"🏙️ Wilayah Terdeteksi dari Jadwal Hari Ini: **{auto_detected_kota}**")
 
       btn_login = st.form_submit_button("Masuk Aplikasi", type="primary")
 
       if btn_login:
         st.session_state["logged_in"] = True
         st.session_state["user_spg"] = pilihan_user
-        st.session_state["kota_kab"] = pilihan_kota
+        st.session_state["kota_kab"] = auto_detected_kota
         st.rerun()
 
     st.markdown(
@@ -1123,7 +1165,7 @@ with col_banner:
       <div class="user-banner">
           <div class="user-banner-title">👤 {st.session_state['user_spg']}</div>
           <div class="user-banner-sub">
-              🏙️ Wilayah: <b>{st.session_state['kota_kab']}</b>
+              🏙️ Wilayah Operasional (Otomatis Jadwal): <b>{st.session_state['kota_kab']}</b>
           </div>
       </div>
       """,
@@ -1229,7 +1271,7 @@ else:
   st.error(
       f"🚨 **Peringatan Lock GPS (Diluar Wilayah Operasional):**\n\n"
       f"- **Koordinat Anda:** Lat: `{user_lat:.6f}`, Lon: `{user_lon:.6f}`\n"
-      f"- **Wilayah Terpilih:** **{st.session_state['kota_kab']}**\n\n"
+      f"- **Wilayah Terpilih (Jadwal):** **{st.session_state['kota_kab']}**\n\n"
       "⚠️ Posisi Anda terdeteksi berada di luar batas zona GeoJSON wilayah"
       f" {st.session_state['kota_kab']}. Form laporan dikunci sampai Anda"
       " berada di dalam area operasional yang sah."
@@ -1412,7 +1454,6 @@ if (
     )
     gender_entry = st.radio("Gender", ["L", "P"], horizontal=True)
     
-    # Range Umur diganti dari input angka satuan ke selectbox range
     range_umur_entry = st.selectbox(
         "Range Umur",
         options=["18-24", "25-30", "31-35", "36-44", "45+"],
