@@ -1098,7 +1098,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
   st.stop()
 
 # ====================================================
-# HALAMAN LOGIN UTAMA (BERSEBELAHAN DENGAN TOMBOL BESAR)
+# HALAMAN LOGIN UTAMA (MENGGUNAKAN CONTAINER, BEBAS DARI ST.FORM)
 # ====================================================
 if not st.session_state["logged_in"]:
   _, col_center, _ = st.columns([0.02, 0.96, 0.02])
@@ -1130,8 +1130,11 @@ if not st.session_state["logged_in"]:
     st.markdown(f"**Mode Aktif Saat Ini:** `{st.session_state['login_mode']}`")
     st.markdown("---")
 
-    with st.form("form_login_main"):
+    # Menggunakan container biasa agar st.selectbox dengan on_change aman (tanpa error st.form)
+    with st.container():
       list_spg = [f"Team SPG {i}" for i in range(1, 21)]
+      
+      # Selectbox berada di luar st.form sehingga on_change berjalan normal
       pilihan_user = st.selectbox(
           "👤 Pilih User / Team SPG",
           list_spg,
@@ -1150,7 +1153,8 @@ if not st.session_state["logged_in"]:
       else:
         st.info(f"🏙️ Wilayah Terdeteksi dari Jadwal Hari Ini: **{auto_detected_kota}**")
 
-      btn_login = st.form_submit_button(f"Masuk Aplikasi ({st.session_state['login_mode']})", type="primary")
+      st.markdown("")
+      btn_login = st.button(f"Masuk Aplikasi ({st.session_state['login_mode']})", type="primary", use_container_width=True)
 
       if btn_login:
         if not has_schedule:
