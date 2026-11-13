@@ -253,15 +253,26 @@ def save_master_spgs(spgs):
     json.dump(spgs, f, ensure_ascii=False, indent=2)
 
 
-def tentukan_status_target(row):
-  brand = row["Brand_Rokok"]
-  omset = row["Jumlah_Omset"]
-  if brand == "Black Matcha K12":
-    return "Achieved" if omset >= 100 else "Not Achieved"
-  elif brand in ["D.Super 12", "D.76 Apel Royal"]:
-    return "Achieved" if omset >= 80 else "Not Achieved"
-  else:
-    return "Achieved"
+# ====================================================
+# ATURAN TARGET PER BRAND
+# ====================================================
+TARGET_RULES = {
+    "Black Matcha K12": {"target_spg": 50, "target_team": 100},
+    "D.Super 12": {"target_spg": 40, "target_team": 80},
+    "D.76 Apel Royal": {"target_spg": 40, "target_team": 80},
+    "D.76 Apel": {"target_spg": 30, "target_team": 60},
+    "Djarum 76 Aksara": {"target_spg": 30, "target_team": 60},
+}
+
+
+def cek_status_target_spg(brand, omset_spg):
+  rule = TARGET_RULES.get(brand, {"target_spg": 25, "target_team": 50})
+  return "Achieved" if omset_spg >= rule["target_spg"] else "Not Achieved"
+
+
+def cek_status_target_team(brand, omset_team):
+  rule = TARGET_RULES.get(brand, {"target_spg": 25, "target_team": 50})
+  return "Achieved" if omset_team >= rule["target_team"] else "Not Achieved"
 
 
 def style_status_target(val):
@@ -389,8 +400,11 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
 
   # --- TAMPILAN 2: MASTER DATA MEREK ROKOK ---
   elif st.session_state["admin_view"] == "Master_Brand":
-    st.markdown("## 🚬 Master Data: Merek Rokok")
-    st.caption("Tambah, ubah, atau hapus daftar merek rokok aktif.")
+    st.markdown("## 🚬 Master Data: Merek Rokok & Target")
+    st.caption(
+        "Kelola daftar merek rokok beserta aturan target omset per SPG dan"
+        " Team."
+    )
 
     current_brands = load_master_brands()
 
@@ -398,14 +412,26 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
       new_brand_name = st.text_input(
           "Nama Merek Rokok Baru", placeholder="Contoh: Djarum Super Extra"
       )
+      t_spg = st.number_input(
+          "Target per SPG (Bungkus)", min_value=1, value=30, step=1
+      )
+      t_team = st.number_input(
+          "Target per Team (Bungkus)", min_value=1, value=60, step=1
+      )
       btn_add_brand = st.form_submit_button("➕ Tambah Merek Rokok")
       if btn_add_brand:
-        if new_brand_name.strip():
-          if new_brand_name.strip() not in current_brands:
-            current_brands.append(new_brand_name.strip())
+        b_clean = new_brand_name.strip()
+        if b_clean:
+          if b_clean not in current_brands:
+            current_brands.append(b_clean)
             save_master_brands(current_brands)
+            TARGET_RULES[b_clean] = {
+                "target_spg": int(t_spg),
+                "target_team": int(t_team),
+            }
             st.success(
-                f"✅ Merek rokok '{new_brand_name.strip()}' berhasil ditambahkan!"
+                f"✅ Merek rokok '{b_clean}' berhasil ditambahkan dengan target"
+                f" SPG: {t_spg}, Team: {t_team}!"
             )
             st.rerun()
           else:
@@ -414,12 +440,18 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
           st.warning("Mohon masukkan nama merek rokok.")
 
     st.markdown("---")
-    st.markdown("#### 📋 Daftar Merek Rokok Aktif")
+    st.markdown("#### 📋 Daftar Merek Rokok & Aturan Target")
     for idx, b in enumerate(current_brands):
-      col_b1, col_b2 = st.columns([0.8, 0.2])
+      rule = TARGET_RULES.get(b, {"target_spg": 25, "target_team": 50})
+      col_b1, col_b2, col_b3 = st.columns([0.5, 0.3, 0.2])
       with col_b1:
-        st.write(f"**{idx+1}.** {b}")
+        st.write(
+            f"**{idx+1}. {b}**\n- Target SPG: `{rule['target_spg']} bks`\n-"
+            f" Target Team: `{rule['target_team']} bks`"
+        )
       with col_b2:
+        st.write("")
+      with col_b3:
         if st.button("🗑️ Hapus", key=f"del_brand_{idx}"):
           current_brands.pop(idx)
           save_master_brands(current_brands)
@@ -525,7 +557,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
       st.rerun()
     st.stop()
 
-  # --- TAMPILAN 5: ANALITIK & REKAP ALL (DITAMBAH SEBARAN PER KECAMATAN) ---
+  # --- TAMPILAN 5: ANALITIK & REKAP ALL ---
   elif st.session_state["admin_view"] == "Analitik":
     st.markdown("## 📊 Analitik & Rekapitulasi All User")
     st.caption(
@@ -552,7 +584,6 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
       st.markdown("---")
       st.markdown("#### 🗺️ Sebaran Kunjungan & Omset per Kecamatan")
 
-      # Filter wilayah opsional pada analitik kecamatan
       list_kota_analitik = ["Semua Wilayah"] + sorted(
           df_all_users["Kota_Kab"].dropna().unique().tolist()
       )
@@ -578,13 +609,10 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
             .sort_values(by="Total_Omset_Bungkus", ascending=False)
         )
 
-        # Grafik batang omset per kecamatan
         chart_kec = df_sebaran_kec.set_index("Kecamatan")[
             "Total_Omset_Bungkus"
         ]
         st.bar_chart(chart_kec)
-
-        # Tabel detail sebaran per kecamatan
         st.dataframe(df_sebaran_kec, use_container_width=True)
       else:
         st.info("Tidak ada data pada wilayah yang dipilih.")
@@ -603,7 +631,6 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
       "Pilih menu master data atau pantau rekapitulasi tim secara real-time."
   )
 
-  # Grid Kartu Menu Admin
   st.markdown("#### 📦 Master Data")
   col_m1, col_m2 = st.columns(2)
   with col_m1:
@@ -621,7 +648,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
       st.rerun()
   with col_m2:
     if st.button(
-        "🚬 Merek Rokok\nKelola daftar merek",
+        "🚬 Merek Rokok & Target\nKelola daftar merek & target",
         use_container_width=True,
     ):
       st.session_state["admin_view"] = "Master_Brand"
@@ -694,19 +721,31 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
           unsafe_allow_html=True,
       )
 
-    st.markdown("#### 🏆 Leaderboard Team SPG")
-    df_leaderboard = (
-        df_all_users.groupby(["Promotor", "Kota_Kab"])
+    st.markdown("#### 🏆 Leaderboard Team SPG (Berdasarkan Target Team)")
+    df_team_leaderboard = (
+        df_all_users.groupby(["Promotor", "Kota_Kab", "Brand_Rokok"])
         .agg(
-            Total_Hari_Aktif=("Tanggal", lambda x: x.nunique()),
-            Total_Warkop=("Warkop_LKK", lambda x: x.nunique()),
+            Total_Omset_Team=("Jumlah_Bungkus", "sum"),
             Total_Konsumen=("Nama_Konsumen", "count"),
-            Total_Omset_Bungkus=("Jumlah_Bungkus", "sum"),
         )
         .reset_index()
-        .sort_values(by="Total_Omset_Bungkus", ascending=False)
     )
-    st.dataframe(df_leaderboard, use_container_width=True)
+    df_team_leaderboard["Target_Team"] = df_team_leaderboard[
+        "Brand_Rokok"
+    ].apply(
+        lambda b: TARGET_RULES.get(b, {"target_team": 50})["target_team"]
+    )
+    df_team_leaderboard["Status_Target_Team"] = df_team_leaderboard.apply(
+        lambda r: cek_status_target_team(r["Brand_Rokok"], r["Total_Omset_Team"]),
+        axis=1,
+    )
+
+    st.dataframe(
+        df_team_leaderboard.style.map(
+            style_status_target, subset=["Status_Target_Team"]
+        ),
+        use_container_width=True,
+    )
 
     st.markdown("---")
     st.markdown("#### 📑 Log Detail Transaksi All User")
@@ -826,7 +865,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
   st.stop()
 
 # ====================================================
-# HALAMAN LOGIN UTAMA
+# HALAMAN LOGIN UTAMA (TANPA PASSWORD USER)
 # ====================================================
 if not st.session_state["logged_in"]:
   _, col_center, _ = st.columns([0.05, 0.9, 0.05])
@@ -844,8 +883,10 @@ if not st.session_state["logged_in"]:
     )
 
     with st.form("form_login"):
-      st.markdown("#### 🔐 Masuk ke Akun Operasional")
-      st.caption("Silakan lengkapi identitas team dan kendaraan sebelum mulai.")
+      st.markdown("#### 🚀 Masuk ke Akun Operasional")
+      st.caption(
+          "Pilih tim, wilayah, dan kendaraan Anda, lalu masuk tanpa kata sandi."
+      )
 
       list_spg = [f"Team SPG {i}" for i in range(1, 21)]
       pilihan_user = st.selectbox("👤 Pilih User (Team SPG)", list_spg)
@@ -866,32 +907,17 @@ if not st.session_state["logged_in"]:
               "🚗 Plat Kendaraan", placeholder="Contoh: L 1234 AB"
           )
 
-      password_input = st.text_input(
-          "🔑 Kata Sandi (Password)",
-          type="password",
-          placeholder="Masukkan password akun Anda",
-      )
-
-      btn_login = st.form_submit_button("🚀 Masuk Aplikasi")
+      btn_login = st.form_submit_button("Masuk Aplikasi", type="primary")
 
       if btn_login:
-        spg_num = pilihan_user.replace("Team SPG ", "")
-        expected_password = f"spg{spg_num}"
-
-        if password_input == expected_password or password_input == "spg123":
-          if not plat_input or not str(plat_input).strip():
-            st.warning("⚠️ Mohon pilih plat nomor kendaraan terlebih dahulu.")
-          else:
-            st.session_state["logged_in"] = True
-            st.session_state["user_spg"] = pilihan_user
-            st.session_state["kota_kab"] = pilihan_kota
-            st.session_state["plat_kendaraan"] = str(plat_input).strip().upper()
-            st.rerun()
+        if not plat_input or not str(plat_input).strip():
+          st.warning("⚠️ Mohon pilih plat nomor kendaraan terlebih dahulu.")
         else:
-          st.error(
-              f"❌ Password salah untuk **{pilihan_user}**! (Petunjuk default:"
-              f" `spg{spg_num}` atau `spg123`)"
-          )
+          st.session_state["logged_in"] = True
+          st.session_state["user_spg"] = pilihan_user
+          st.session_state["kota_kab"] = pilihan_kota
+          st.session_state["plat_kendaraan"] = str(plat_input).strip().upper()
+          st.rerun()
 
     st.markdown(
         """
@@ -1031,7 +1057,6 @@ else:
 
 st.markdown("### 📋 Lokasi Kunjungan")
 
-# Pilihan Nama SPG terhubung langsung dengan Master Data Nama SPG
 daftar_master_spg = load_master_spgs()
 if daftar_master_spg:
   nama_spg_manual = st.selectbox("Pilih Nama SPG", options=daftar_master_spg)
@@ -1040,7 +1065,6 @@ else:
       "Nama SPG (Entry Manual)", placeholder="Contoh: Nanda"
   )
 
-# Pilih Kecamatan otomatis terisi sesuai titik GPS saat ini
 opsi_kecamatan = daftar_kecamatan if daftar_kecamatan else ["Kecamatan Umum"]
 default_index_kec = 0
 if detected_kecamatan and detected_kecamatan in opsi_kecamatan:
@@ -1053,7 +1077,6 @@ kecamatan_pilihan = st.selectbox(
     help="Otomatis terpilih berdasarkan titik koordinat GPS Anda saat ini",
 )
 
-# Pilihan warkop terhubung langsung dengan Master Lokasi Warkop
 daftar_master_lokasi = load_master_lokasi()
 nama_warkop_manual = st.selectbox(
     "Pilih / Nama Warkop / LKK",
@@ -1079,7 +1102,6 @@ if (
         f" {str(nama_warkop_manual).strip()}"
     )
 
-    # Brand rokok terhubung langsung dengan Master Merek Rokok
     daftar_master_brand = load_master_brands()
     brand_entry = st.selectbox(
         "Brand Rokok",
@@ -1175,20 +1197,28 @@ if not df_user_rekap.empty:
   ).dt.date
   df_user_rekap["Nama_SPG"] = df_user_rekap["Nama_SPG"].fillna("-")
 
-  st.markdown("#### 📋 Tabel Evaluasi Harian Per Team SPG")
-  df_eval = (
-      df_user_rekap.groupby(["Tanggal", "Promotor", "Brand_Rokok"])
+  st.markdown("#### 📋 Tabel Evaluasi Harian Per SPG (Berdasarkan Target SPG)")
+  df_eval_spg = (
+      df_user_rekap.groupby(["Tanggal", "Nama_SPG", "Brand_Rokok"])
       .agg(
           Jumlah_Titik_Warkop=("Warkop_LKK", lambda x: x.nunique()),
           Konsumen_Beli=("Nama_Konsumen", "count"),
-          Jumlah_Omset=("Jumlah_Bungkus", "sum"),
+          Jumlah_Omset_SPG=("Jumlah_Bungkus", "sum"),
       )
       .reset_index()
   )
-  df_eval["Status_Target"] = df_eval.apply(tentukan_status_target, axis=1)
+  df_eval_spg["Target_SPG"] = df_eval_spg["Brand_Rokok"].apply(
+      lambda b: TARGET_RULES.get(b, {"target_spg": 25})["target_spg"]
+  )
+  df_eval_spg["Status_Target_SPG"] = df_eval_spg.apply(
+      lambda r: cek_status_target_spg(r["Brand_Rokok"], r["Jumlah_Omset_SPG"]),
+      axis=1,
+  )
 
   st.dataframe(
-      df_eval.style.map(style_status_target, subset=["Status_Target"]),
+      df_eval_spg.style.map(
+          style_status_target, subset=["Status_Target_SPG"]
+      ),
       use_container_width=True,
   )
 
@@ -1201,7 +1231,9 @@ if not df_user_rekap.empty:
 
   output = BytesIO()
   with pd.ExcelWriter(output, engine="openpyxl") as writer:
-    df_eval.to_excel(writer, index=False, sheet_name="Evaluasi Harian")
+    df_eval_spg.to_excel(
+        writer, index=False, sheet_name="Evaluasi Harian SPG"
+    )
     df_user_rekap.drop(columns=["Tanggal"], errors="ignore").to_excel(
         writer, index=False, sheet_name="Detail Transaksi"
     )
