@@ -1969,27 +1969,51 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
       st.info("Belum ada data log input kontak manual dari Supervisi.")
 
   # ====================================================
-  # LOG DETAIL TRANSAKSI ALL USER (SPG) & MENU HAPUS
+  # LOG DETAIL TRANSAKSI ALL USER (SPG) & MENU HAPUS/EDIT
   # ====================================================
   if not df_all_users.empty:
     st.markdown("---")
     st.markdown("#### 📑 Log Detail Transaksi All User (SPG)")
 
+    # === MENU EDIT & HAPUS LOG DETAIL TRANSAKSI SPG ===
     with st.expander(
-        "🗑️ Menu Hapus Log Detail Transaksi SPG (Per Row / Hari / Minggu / All"
-        " Data)",
+        "✏️ Menu Edit & 🗑️ Hapus Log Detail Transaksi SPG",
         expanded=False,
     ):
       st.warning(
-          "⚠️ Perhatian: Data yang sudah dihapus dari database tidak dapat"
-          " dikembalikan."
+          "⚠️ Anda dapat melakukan koreksi/edit langsung pada sel tabel di bawah ini, atau menggunakan menu hapus data."
       )
-      tab_del_row, tab_del_day, tab_del_week, tab_del_all = st.tabs([
+      
+      tab_edit_table, tab_del_row, tab_del_day, tab_del_week, tab_del_all = st.tabs([
+          "✏️ Edit Langsung Tabel",
           "🔹 Hapus per Row",
           "📅 Hapus per Hari",
           "📆 Hapus per Minggu",
           "🚨 Hapus All Data",
       ])
+
+      with tab_edit_table:
+        st.markdown("##### Edit Data Transaksi Langsung pada Tabel")
+        st.caption("Klik dua kali pada sel yang ingin diubah, lalu klik tombol Simpan Perubahan di bawah.")
+        
+        # Tampilkan data editor untuk mengedit DataFrame secara interaktif
+        edited_transaksi_df = st.data_editor(
+            df_all_users.drop(columns=["Waktu_Dt", "Tanggal", "Periode_Minggu"], errors="ignore"),
+            num_rows="dynamic",
+            use_container_width=True,
+            key="editor_log_transaksi_all"
+        )
+        
+        if st.button("💾 Simpan Perubahan Edit Transaksi", type="primary", key="btn_save_edit_transaksi"):
+          # Validasi atau pastikan kolom sesuai EXPECTED_COLUMNS
+          for col in EXPECTED_COLUMNS:
+            if col not in edited_transaksi_df.columns:
+              edited_transaksi_df[col] = "-"
+          
+          df_final_saved = edited_transaksi_df[EXPECTED_COLUMNS]
+          save_database(df_final_saved)
+          st.success("✅ Perubahan log detail transaksi berhasil disimpan!")
+          st.rerun()
 
       with tab_del_row:
         df_indexed = df_all_users.reset_index()
@@ -2011,7 +2035,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
                 for item in selected_rows
             ]
             df_clean = df_all_users.drop(index=indices_to_drop).drop(
-                columns=["Waktu_Dt"], errors="ignore"
+                columns=["Waktu_Dt", "Tanggal", "Periode_Minggu", "Bulan_Tahun"], errors="ignore"
             )
             save_database(df_clean)
             st.success(
@@ -2046,7 +2070,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
           ):
             df_clean = df_all_users[
                 df_all_users["Tanggal"] != tgl_hapus
-            ].drop(columns=["Waktu_Dt"], errors="ignore")
+            ].drop(columns=["Waktu_Dt", "Tanggal", "Periode_Minggu", "Bulan_Tahun"], errors="ignore")
             save_database(df_clean)
             st.success(
                 f"✅ Seluruh data ({jml_data_hari} baris) pada tanggal"
@@ -2086,7 +2110,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
           ):
             df_clean = df_all_users[
                 df_all_users["Periode_Minggu"] != pilih_minggu_label
-            ].drop(columns=["Waktu_Dt"], errors="ignore")
+            ].drop(columns=["Waktu_Dt", "Tanggal", "Periode_Minggu", "Bulan_Tahun"], errors="ignore")
             save_database(df_clean)
             st.success(
                 "✅ Data pada periode minggu"
