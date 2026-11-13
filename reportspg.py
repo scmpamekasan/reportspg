@@ -396,9 +396,6 @@ if not st.session_state["logged_in"]:
       if st.button("📍 Master Lokasi Warkop (Excel)", use_container_width=True):
         st.session_state["admin_view"] = "Master_Lokasi"
         st.rerun()
-      if st.button("🚗 Master Plat Kendaraan", use_container_width=True):
-        st.session_state["admin_view"] = "Master_Plat"
-        st.rerun()
       if st.button("📊 Analitik & Rekap All", use_container_width=True):
         st.session_state["admin_view"] = "Analitik"
         st.rerun()
