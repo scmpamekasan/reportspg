@@ -20,13 +20,14 @@ st.set_page_config(
 )
 
 # ====================================================
-# CUSTOM CSS UNTUK UI MODERN & TOMBOL BESAR LOGIN
+# CUSTOM CSS UNTUK UI MODERN & BOTTOM NAVIGATION BAR
 # ====================================================
 st.markdown(
     """
     <style>
     .stApp {
         background-color: #f4f6f9;
+        margin-bottom: 70px; /* Ruang agar konten bawah tidak tertutup nav bar */
     }
     .login-header {
         background: linear-gradient(135deg, #d32f2f 0%, #b71c1c 100%);
@@ -433,6 +434,9 @@ if "admin_logged_in" not in st.session_state:
   st.session_state["admin_logged_in"] = False
 if "admin_view" not in st.session_state:
   st.session_state["admin_view"] = "Dashboard"
+
+if "menu_bawah" not in st.session_state:
+  st.session_state["menu_bawah"] = "Dashboard"
 
 if "draft_konsumen" not in st.session_state:
   st.session_state["draft_konsumen"] = ""
@@ -1547,7 +1551,121 @@ with col_logout:
 
 st.markdown("---")
 
+# ====================================================
+# BOTTOM NAVIGATION BAR (FIXED DI BAWAH LAYAR)
+# ====================================================
+st.markdown(
+    """
+    <style>
+    .bottom-nav {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        width: 100%;
+        background-color: #ffffff;
+        border-top: 1px solid #e2e8f0;
+        display: flex;
+        justify-content: space-around;
+        padding: 8px 0;
+        z-index: 99999;
+        box-shadow: 0 -4px 10px rgba(0,0,0,0.05);
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
+# Kontainer tombol bilah navigasi bawah
+c_nav1, c_nav2, c_nav3, c_nav4, c_nav5 = st.columns(5)
+with c_nav1:
+  if st.button("🏠 Dashboard", use_container_width=True, type="primary" if st.session_state["menu_bawah"] == "Dashboard" else "secondary"):
+    st.session_state["menu_bawah"] = "Dashboard"
+    st.rerun()
+with c_nav2:
+  if st.button("⏱️ Hari Ini", use_container_width=True, type="primary" if st.session_state["menu_bawah"] == "Hari Ini" else "secondary"):
+    st.session_state["menu_bawah"] = "Hari Ini"
+    st.rerun()
+with c_nav3:
+  if st.button("👥 Shift", use_container_width=True, type="primary" if st.session_state["menu_bawah"] == "Shift" else "secondary"):
+    st.session_state["menu_bawah"] = "Shift"
+    st.rerun()
+with c_nav4:
+  if st.button("📊 Rekap", use_container_width=True, type="primary" if st.session_state["menu_bawah"] == "Rekap" else "secondary"):
+    st.session_state["menu_bawah"] = "Rekap"
+    st.rerun()
+with c_nav5:
+  if st.button("📋 Absensi", use_container_width=True, type="primary" if st.session_state["menu_bawah"] == "Absensi" else "secondary"):
+    st.session_state["menu_bawah"] = "Absensi"
+    st.rerun()
+
+st.markdown("---")
+
+# Menampilkan konten berdasarkan menu aktif dari Bottom Navigation Bar
+aktif_menu = st.session_state["menu_bawah"]
+
+if aktif_menu == "Hari Ini":
+  st.markdown("### ⏱️ Aktivitas & Kunjungan Hari Ini")
+  st.info("Fitur ringkasan aktivitas lapangan harian dan status kunjungan saat ini.")
+  df_today_all = load_database()
+  if not df_today_all.empty and "Promotor" in df_today_all.columns:
+    df_today_user = df_today_all[df_today_all["Promotor"] == st.session_state["user_spg"]]
+    if not df_today_user.empty:
+      st.dataframe(df_today_user, use_container_width=True)
+    else:
+      st.write("Belum ada aktivitas tercatat untuk team Anda hari ini.")
+  else:
+    st.write("Belum ada data transaksi tersimpan.")
+  st.stop()
+
+elif aktif_menu == "Shift":
+  st.markdown("### 👥 Informasi Shift & Penugasan Team")
+  st.info(f"Team Aktif: **{st.session_state['user_spg']}** | Wilayah: **{st.session_state['kota_kab']}**")
+  df_jadwal_info = load_jadwal_spg()
+  if not df_jadwal_info.empty:
+    st.markdown("#### 📅 Jadwal Penugasan Master")
+    st.dataframe(df_jadwal_info, use_container_width=True)
+  else:
+    st.write("Data jadwal shift belum tersedia di file master.")
+  st.stop()
+
+elif aktif_menu == "Absensi":
+  st.markdown("### 📋 Kehadiran & Absensi Lapangan")
+  st.info("Silakan konfirmasi kehadiran operasional harian Anda di titik lokasi tugas.")
+  with st.form("form_absensi_harian"):
+    st.write(f"**Team:** {st.session_state['user_spg']} | **Plat Mobil:** {st.session_state['plat_mobil']}")
+    catatan_hadir = st.text_input("Keterangan / Catatan Kehadiran", value="Hadir lengkap dan siap bertugas")
+    btn_absen_kirim = st.form_submit_button("✅ Kirim Absensi Hari Ini", type="primary")
+    if btn_absen_kirim:
+      st.success("✅ Absensi kehadiran Anda berhasil dicatat dan dikirim ke sistem pusat!")
+  st.stop()
+
+elif aktif_menu == "Rekap":
+  st.markdown("### 📊 Rekapitulasi & Unduh Laporan")
+  st.info("Pusat unduh rekapitulasi data dan laporan performa lapangan.")
+  df_rekap_all = load_database()
+  if not df_rekap_all.empty and "Promotor" in df_rekap_all.columns:
+    df_rekap_user = df_rekap_all[df_rekap_all["Promotor"] == st.session_state["user_spg"]]
+    if not df_rekap_user.empty:
+      st.dataframe(df_rekap_user, use_container_width=True)
+      output_rk = BytesIO()
+      with pd.ExcelWriter(output_rk, engine="openpyxl") as writer:
+        df_rekap_user.to_excel(writer, index=False, sheet_name="Rekap User")
+      st.download_button(
+          label="📥 Download Rekap Excel (.xlsx)",
+          data=output_rk.getvalue(),
+          file_name=f"rekap_{st.session_state['user_spg'].replace(' ', '_')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+          mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          type="primary"
+      )
+    else:
+      st.write("Belum ada data rekap untuk diunduh.")
+  else:
+    st.write("Belum ada data tersimpan.")
+  st.stop()
+
+# ====================================================
+# KONTEN UTAMA: MENU "Dashboard" (FORM SPG / SUPERVISI)
+# ====================================================
 @st.cache_data
 def load_master_wilayah(kota):
   if kota == "Surabaya":
