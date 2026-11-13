@@ -406,41 +406,37 @@ TARGET_RULES = {
     "D.76 Apel Royal": {"target_spg": 40, "target_team": 80},
     "D.76 Apel": {"target_spg": 30, "target_team": 60},
     "Djarum 76 Aksara": {"target_spg": 30, "target_team": 60},
-    # Target gabungan untuk Djarum Black Siro & Djarum Black Kuro
     "Djarum Black Siro": {"target_spg": 40, "target_team": 80, "group": "Black_Siro_Kuro"},
     "Djarum Black Kuro": {"target_spg": 40, "target_team": 80, "group": "Black_Siro_Kuro"},
 }
 
 
-def cek_status_target_spg_combined(row_or_brand, omset_spg, df_data=None, level="spg", promotor_name=None, spg_name=None):
-  """
-  Fungsi untuk mengecek status target, mendukung target gabungan (combined) 
-  antara Djarum Black Siro dan Djarum Black Kuro.
-  """
-  rule = TARGET_RULES.get(row_or_brand, {"target_spg": 25, "target_team": 50})
-  target_key = "target_spg" if level == "spg" else "target_team"
-  target_val = rule.get(target_key, 25 if level == "spg" else 50)
+def cek_status_target_spg(brand, omset_spg, df_data=None, spg_name=None):
+  rule = TARGET_RULES.get(brand, {"target_spg": 25, "target_team": 50})
+  target_val = rule.get("target_spg", 25)
   
-  # Cek apakah brand ini memiliki grup gabungan
-  if "group" in rule and rule["group"] == "Black_Siro_Kuro" and df_data is not None:
-    # Hitung total omset gabungan dari kedua brand untuk SPG atau Team yang bersangkutan
-    if level == "spg" and spg_name:
-      total_gabungan = df_data[
-          (df_data["Nama_SPG"] == spg_name) & 
-          (df_data["Brand_Rokok"].isin(["Djarum Black Siro", "Djarum Black Kuro"]))
-      ]["Jumlah_Bungkus"].sum()
-    elif level == "team" and promotor_name:
-      total_gabungan = df_data[
-          (df_data["Promotor"] == promotor_name) & 
-          (df_data["Brand_Rokok"].isin(["Djarum Black Siro", "Djarum Black Kuro"]))
-      ]["Jumlah_Bungkus"].sum()
-    else:
-      total_gabungan = omset_spg
-      
+  if "group" in rule and rule["group"] == "Black_Siro_Kuro" and df_data is not None and spg_name is not None:
+    total_gabungan = df_data[
+        (df_data["Nama_SPG"] == spg_name) & 
+        (df_data["Brand_Rokok"].isin(["Djarum Black Siro", "Djarum Black Kuro"]))
+    ]["Jumlah_Bungkus"].sum()
     return "Achieved" if total_gabungan >= target_val else "Not Achieved"
-  
-  # Logika standar untuk brand biasa
+    
   return "Achieved" if omset_spg >= target_val else "Not Achieved"
+
+
+def cek_status_target_team(brand, omset_team, df_data=None, promotor_name=None):
+  rule = TARGET_RULES.get(brand, {"target_spg": 25, "target_team": 50})
+  target_val = rule.get("target_team", 50)
+  
+  if "group" in rule and rule["group"] == "Black_Siro_Kuro" and df_data is not None and promotor_name is not None:
+    total_gabungan = df_data[
+        (df_data["Promotor"] == promotor_name) & 
+        (df_data["Brand_Rokok"].isin(["Djarum Black Siro", "Djarum Black Kuro"]))
+    ]["Jumlah_Bungkus"].sum()
+    return "Achieved" if total_gabungan >= target_val else "Not Achieved"
+    
+  return "Achieved" if omset_team >= target_val else "Not Achieved"
 
 
 def style_status_target(val):
@@ -449,7 +445,6 @@ def style_status_target(val):
   elif val == "Achieved":
     return "color: #16a34a; font-weight: bold;"
   return ""
-
 
 # ====================================================
 # INISIALISASI SESSION STATE & CALLBACK USER CHANGE
@@ -1103,8 +1098,15 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
     ].apply(
         lambda b: TARGET_RULES.get(b, {"target_team": 50})["target_team"]
     )
+    
+    # PERBAIKAN PEMANGGILAN DI SINI:
     df_team_leaderboard["Status_Target_Team"] = df_team_leaderboard.apply(
-        lambda r: cek_status_target_team(r["Brand_Rokok"], r["Total_Omset_Team"]),
+        lambda r: cek_status_target_team(
+            r["Brand_Rokok"], 
+            r["Total_Omset_Team"], 
+            df_data=df_all_users, 
+            promotor_name=r["Promotor"]
+        ),
         axis=1,
     )
 
@@ -1114,8 +1116,6 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
         ),
         use_container_width=True,
     )
-  else:
-    st.info("Belum ada data laporan transaksi SPG masuk.")
 
   # ====================================================
   # REPORT REKAPITULASI COMBINE PER TITIK LKK (ADMIN)
