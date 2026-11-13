@@ -208,26 +208,25 @@ EXPECTED_SUPERVISI_COLUMNS = [
 
 
 # ====================================================
-# FUNGSI BANTUAN MINGGU (SABTU s/d JUMAT) AKURAT
+# FUNGSI BANTUAN MINGGU (HANYA MENGGUNAKAN ANGKA MINGGU)
 # ====================================================
 def get_custom_week_info(dt):
-  """Menghitung nomor minggu dan rentang tanggal (Sabtu s/d Jumat)."""
+  """Menghitung nomor minggu saja (misal: Minggu ke-46)."""
   if pd.isna(dt):
     return "-", "-"
   d = pd.to_datetime(dt).date()
-  wd = d.weekday()  # Mon=0, Tue=1, Wed=2, Thu=3, Fri=4, Sat=5, Sun=6
+  wd = d.weekday()
 
-  if wd == 5:  # Sabtu
+  if wd == 5:
     fri_date = d + timedelta(days=6)
-  elif wd == 6:  # Minggu
+  elif wd == 6:
     fri_date = d + timedelta(days=5)
-  else:  # Senin s.d. Jumat
+  else:
     fri_date = d + timedelta(days=(4 - wd))
 
-  sat_date = fri_date - timedelta(days=6)
   _, iso_w, _ = fri_date.isocalendar()
 
-  periode_label = f"Minggu ke-{iso_w} ({sat_date.strftime('%d-%m-%Y')} s/d {fri_date.strftime('%d-%m-%Y')})"
+  periode_label = f"Minggu ke-{iso_w}"
   return periode_label, iso_w
 
 
@@ -1902,8 +1901,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
         )
         if daftar_minggu_sup:
           pilih_sup_minggu_label = st.selectbox(
-              "Pilih Periode Minggu Log Kontak Supervisi yang akan dihapus"
-              " (Sabtu s/d Jumat):",
+              "Pilih Periode Minggu Log Kontak Supervisi yang akan dihapus:",
               options=daftar_minggu_sup,
               key="sb_del_sup_week",
           )
@@ -1926,7 +1924,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
             ].drop(columns=["Waktu_Dt"], errors="ignore")
             save_supervisi_database(df_sup_clean)
             st.success(
-                "✅ Data kontak Supervisi pada periode minggu"
+                "✅ Data kontak Supervisi pada periode"
                 f" {pilih_sup_minggu_label} berhasil dihapus!"
             )
             st.rerun()
@@ -2068,8 +2066,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
         )
         if daftar_minggu_spg:
           pilih_minggu_label = st.selectbox(
-              "Pilih Periode Minggu Transaksi yang akan dihapus (Sabtu s/d"
-              " Jumat):",
+              "Pilih Periode Minggu Transaksi yang akan dihapus:",
               options=daftar_minggu_spg,
               key="sb_del_week",
           )
