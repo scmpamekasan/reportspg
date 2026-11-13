@@ -208,6 +208,27 @@ def save_supervisi_database(df):
   df.to_csv(DB_SUPERVISI_KONTAK_FILE, index=False)
 
 
+@st.cache_data
+def load_master_wilayah(kota):
+  if kota == "Surabaya":
+    filename = "Surabaya Barat.geojson"
+  elif kota == "Gresik":
+    filename = "Gresik.geojson"
+  else:
+    return None
+
+  try:
+    with open(filename, "r", encoding="utf-8") as f:
+      data = json.load(f)
+    gdf_master = gpd.GeoDataFrame.from_features(data)
+    if gdf_master.crs is None:
+      gdf_master.set_crs("EPSG:4326", inplace=True)
+    return gdf_master
+  except Exception as e:
+    st.error(f"Gagal memuat file master wilayah '{filename}': {e}")
+    return None
+
+
 # ====================================================
 # MANAJEMEN MASTER DATA & PLAT KENDARAAN
 # ====================================================
@@ -829,7 +850,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
       st.rerun()
     st.stop()
 
-  # --- TAMPILAN PETA RUTE ---
+  # --- TAMPILAN PETA RUTE (DENGAN POLIGON KECAMATAN) ---
   elif st.session_state["admin_view"] == "Peta_Rute":
     st.markdown("## 🗺️ Visualisasi Peta Rute & Poligon Kecamatan")
     st.caption("Pantau rute perjalanan dan batas wilayah poligon kecamatan berdasarkan filter Team SPG, Nama SPG, dan Tanggal.")
@@ -1573,28 +1594,6 @@ with col_logout:
 
 st.markdown("---")
 
-
-@st.cache_data
-def load_master_wilayah(kota):
-  if kota == "Surabaya":
-    filename = "Surabaya Barat.geojson"
-  elif kota == "Gresik":
-    filename = "Gresik.geojson"
-  else:
-    return None
-
-  try:
-    with open(filename, "r", encoding="utf-8") as f:
-      data = json.load(f)
-    gdf_master = gpd.GeoDataFrame.from_features(data)
-    if gdf_master.crs is None:
-      gdf_master.set_crs("EPSG:4326", inplace=True)
-    return gdf_master
-  except Exception as e:
-    st.error(f"Gagal memuat file master wilayah '{filename}': {e}")
-    return None
-
-
 gdf_wilayah = load_master_wilayah(st.session_state["kota_kab"])
 
 col_kec = None
@@ -2118,7 +2117,6 @@ if not df_user_rekap.empty:
   st.markdown("---")
   st.markdown("#### 📑 Log Detail Transaksi & Pengaturan")
   
-  # Kolom Plat_Mobil dihapus dari tampilan log detail transaksi SPG
   cols_to_drop_spg = ["Tanggal", "Plat_Mobil"] if "Plat_Mobil" in df_user_rekap.columns else ["Tanggal"]
   st.dataframe(
       df_user_rekap.drop(columns=cols_to_drop_spg, errors="ignore"),
