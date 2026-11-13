@@ -216,8 +216,6 @@ DEFAULT_BRANDS = [
     "D.76 Apel",
     "D.76 Apel Royal",
     "Black Matcha K12",
-    "Black Matcha Siro",
-    "Black Matcha Kuro",
     "Djarum 76 Aksara",
 ]
 DEFAULT_SPGS = ["Nanda", "Dewi", "Aci", "Ayu"]
@@ -383,8 +381,6 @@ def get_schedule_info_for_team(team_name):
 # ====================================================
 TARGET_RULES = {
     "Black Matcha K12": {"target_spg": 50, "target_team": 100},
-    "Black Matcha Siro": {"target_spg": 40, "target_team": 80},
-    "Black Matcha Kuro": {"target_spg": 40, "target_team": 80},
     "D.Super 12": {"target_spg": 40, "target_team": 80},
     "D.76 Apel Royal": {"target_spg": 40, "target_team": 80},
     "D.76 Apel": {"target_spg": 30, "target_team": 60},
@@ -392,26 +388,14 @@ TARGET_RULES = {
 }
 
 
-def get_target_spg(brand):
-  if brand in ["Black Matcha Siro", "Black Matcha Kuro"]:
-    return 40
-  return TARGET_RULES.get(brand, {"target_spg": 25, "target_team": 50})["target_spg"]
+def cek_status_target_spg(brand, omset_spg):
+  rule = TARGET_RULES.get(brand, {"target_spg": 25, "target_team": 50})
+  return "Achieved" if omset_spg >= rule["target_spg"] else "Not Achieved"
 
 
-def get_target_team(brand):
-  if brand in ["Black Matcha Siro", "Black Matcha Kuro"]:
-    return 80
-  return TARGET_RULES.get(brand, {"target_spg": 25, "target_team": 50})["target_team"]
-
-
-def cek_status_target_spg_val(brand, omset_spg):
-  target_val = get_target_spg(brand)
-  return "Achieved" if omset_spg >= target_val else "Not Achieved"
-
-
-def cek_status_target_team_val(brand, omset_team):
-  target_val = get_target_team(brand)
-  return "Achieved" if omset_team >= target_val else "Not Achieved"
+def cek_status_target_team(brand, omset_team):
+  rule = TARGET_RULES.get(brand, {"target_spg": 25, "target_team": 50})
+  return "Achieved" if omset_team >= rule["target_team"] else "Not Achieved"
 
 
 def style_status_target(val):
@@ -686,13 +670,12 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
     st.markdown("---")
     st.markdown("#### 📋 Daftar Merek Rokok & Aturan Target")
     for idx, b in enumerate(current_brands):
-      t_s = get_target_spg(b)
-      t_t = get_target_team(b)
+      rule = TARGET_RULES.get(b, {"target_spg": 25, "target_team": 50})
       col_b1, col_b2, col_b3 = st.columns([0.5, 0.3, 0.2])
       with col_b1:
         st.write(
-            f"**{idx+1}. {b}**\n- Target SPG: `{t_s} bks`\n-"
-            f" Target Team: `{t_t} bks`"
+            f"**{idx+1}. {b}**\n- Target SPG: `{rule['target_spg']} bks`\n-"
+            f" Target Team: `{rule['target_team']} bks`"
         )
       with col_b2:
         st.write("")
@@ -848,8 +831,8 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
 
   # --- TAMPILAN PETA RUTE ---
   elif st.session_state["admin_view"] == "Peta_Rute":
-    st.markdown("## 🗺️ Visualisasi Peta Rute Perjalanan (All User)")
-    st.caption("Pantau rute dan titik kunjungan lapangan berdasarkan filter Team SPG, Nama SPG, dan Tanggal.")
+    st.markdown("## 🗺️ Visualisasi Peta Rute & Poligon Kecamatan")
+    st.caption("Pantau rute perjalanan dan batas wilayah poligon kecamatan berdasarkan filter Team SPG, Nama SPG, dan Tanggal.")
 
     df_peta_all = load_database()
     if not df_peta_all.empty and "Latitude" in df_peta_all.columns:
@@ -892,6 +875,29 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
             df_filtered_map["Tanggal"] == pilih_tgl
         ]
 
+      # Tentukan wilayah kota aktif dari data terfilter atau default
+      active_kota_map = "Surabaya"
+      if not df_filtered_map.empty and "Kota_Kab" in df_filtered_map.columns:
+        unique_kotas = df_filtered_map["Kota_Kab"].dropna().unique()
+        if len(unique_kotas) > 0:
+          active_kota_map = unique_kotas[0]
+
+      gdf_map_view = load_master_wilayah(active_kota_map)
+      layers_list = []
+
+      # Tambahkan GeoJsonLayer untuk Poligon Kecamatan
+      if gdf_map_view is not None:
+        geojson_layer = pdk.Layer(
+            "GeoJsonLayer",
+            data=gdf_map_view.__geo_interface__,
+            get_fill_color=[30, 144, 255, 40],      # Warna transparan biru pada area poligon
+            get_line_color=[30, 144, 255, 200],     # Garis batas poligon
+            get_line_width=40,
+            pickable=True,
+            auto_highlight=True,
+        )
+        layers_list.append(geojson_layer)
+
       if not df_filtered_map.empty:
         df_filtered_map = df_filtered_map.sort_values("Waktu")
         koordinat_rute = df_filtered_map[
@@ -904,29 +910,32 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
             "PathLayer",
             data=[{"path": koordinat_rute, "name": "Rute Perjalanan"}],
             get_path="path",
-            get_color=[211, 47, 47, 200],
+            get_color=[211, 47, 47, 220],
             get_width=6,
             pickable=True,
         )
+        layers_list.append(path_layer)
 
         scatter_layer = pdk.Layer(
             "ScatterplotLayer",
             data=df_filtered_map,
             get_position=["Longitude", "Latitude"],
-            get_color=[0, 128, 255, 200],
+            get_color=[255, 140, 0, 220],
             get_radius=60,
             pickable=True,
         )
+        layers_list.append(scatter_layer)
 
         view_state = pdk.ViewState(
             latitude=center_lat, longitude=center_lon, zoom=12, pitch=35
         )
 
         deck_map = pdk.Deck(
-            layers=[path_layer, scatter_layer],
+            layers=layers_list,
             initial_view_state=view_state,
             tooltip={
                 "html": (
+                    "<b>Kecamatan Poligon:</b> {nm_kecamatan}<br/>"
                     "<b>Team:</b> {Promotor} ({Nama_SPG})<br/><b>Plat Mobil:</b> {Plat_Mobil}<br/><b>Warkop:</b>"
                     " {Warkop_LKK} ({Kecamatan})<br/><b>Brand:</b>"
                     " {Brand_Rokok} ({Jumlah_Bungkus} bks)<br/><b>Waktu:</b>"
@@ -1046,9 +1055,11 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
     )
     df_team_leaderboard["Target_Team"] = df_team_leaderboard[
         "Brand_Rokok"
-    ].apply(get_target_team)
+    ].apply(
+        lambda b: TARGET_RULES.get(b, {"target_team": 50})["target_team"]
+    )
     df_team_leaderboard["Status_Target_Team"] = df_team_leaderboard.apply(
-        lambda r: cek_status_target_team_val(r["Brand_Rokok"], r["Total_Omset_Team"]),
+        lambda r: cek_status_target_team(r["Brand_Rokok"], r["Total_Omset_Team"]),
         axis=1,
     )
 
@@ -1098,11 +1109,11 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
       df_sup_lkk_filtered = df_sup_lkk_filtered[df_sup_lkk_filtered["Promotor"] == filter_team_lkk]
 
   df_rekap_spg_admin = pd.DataFrame(
-      columns=["Promotor", "Kota_Kab", "Kecamatan", "Warkop_LKK", "Alamat_Warkop", "SPG_Bertugas", "Brand_Rokok", "Konsumen_Beli", "Total_Omset_Bungkus"]
+      columns=["Promotor", "Kota_Kab", "Kecamatan", "Warkop_LKK", "Alamat_Warkop", "SPG_Bertugas", "Konsumen_Beli", "Total_Omset_Bungkus"]
   )
   if not df_spg_lkk_filtered.empty:
     df_rekap_spg_admin = (
-        df_spg_lkk_filtered.groupby(["Promotor", "Kota_Kab", "Kecamatan", "Warkop_LKK", "Alamat_Warkop", "Brand_Rokok"])
+        df_spg_lkk_filtered.groupby(["Promotor", "Kota_Kab", "Kecamatan", "Warkop_LKK", "Alamat_Warkop"])
         .agg(
             SPG_Bertugas=("Nama_SPG", lambda x: ", ".join(x.dropna().unique())),
             Konsumen_Beli=("Nama_Konsumen", "count"),
@@ -1110,7 +1121,6 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
         )
         .reset_index()
     )
-    df_rekap_spg_admin["Target_Omset_Team"] = df_rekap_spg_admin["Brand_Rokok"].apply(get_target_team)
 
   df_rekap_sup_admin = pd.DataFrame(
       columns=["Promotor", "Kota_Kab", "Kecamatan", "Warkop_LKK", "Plat_Mobil_Supervisi", "Jumlah_Kontak_Manual"]
@@ -1130,8 +1140,6 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
       df_combine_admin = df_rekap_sup_admin.copy()
       df_combine_admin["Alamat_Warkop"] = "-"
       df_combine_admin["SPG_Bertugas"] = "-"
-      df_combine_admin["Brand_Rokok"] = "-"
-      df_combine_admin["Target_Omset_Team"] = 0
       df_combine_admin["Konsumen_Beli"] = 0
       df_combine_admin["Total_Omset_Bungkus"] = 0
     elif df_rekap_sup_admin.empty:
@@ -1147,8 +1155,6 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
       ).fillna({
           "Alamat_Warkop": "-",
           "SPG_Bertugas": "-",
-          "Brand_Rokok": "-",
-          "Target_Omset_Team": 0,
           "Plat_Mobil_Supervisi": "-",
           "Jumlah_Kontak_Manual": 0,
           "Konsumen_Beli": 0,
@@ -1159,7 +1165,6 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
     df_combine_admin["Jumlah_Kontak_Manual"] = df_combine_admin["Jumlah_Kontak_Manual"].astype(int)
     df_combine_admin["Konsumen_Beli"] = df_combine_admin["Konsumen_Beli"].astype(int)
     df_combine_admin["Total_Omset_Bungkus"] = df_combine_admin["Total_Omset_Bungkus"].astype(int)
-    df_combine_admin["Target_Omset_Team"] = df_combine_admin["Target_Omset_Team"].astype(int)
 
     cols_combine_order = [
         "Promotor",
@@ -1169,8 +1174,6 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
         "Warkop_LKK",
         "Alamat_Warkop",
         "SPG_Bertugas",
-        "Brand_Rokok",
-        "Target_Omset_Team",
         "Jumlah_Kontak_Manual",
         "Konsumen_Beli",
         "Total_Omset_Bungkus",
@@ -1614,7 +1617,7 @@ if gdf_wilayah is not None:
 loc = get_geolocation()
 detected_kecamatan = None
 
-if loc is None:
+if loc is None or not isinstance(loc, dict) or "coords" not in loc:
   st.warning(
       "⏳ Sedang mengunci titik GPS lokasi Anda... Pastikan izin lokasi"
       " (**Allow / Izinkan**) aktif pada browser Anda."
@@ -1857,10 +1860,10 @@ if st.session_state["login_mode"] == "Supervisi":
   st.markdown("---")
   st.markdown(f"#### 📊 Rekapitulasi Combine Per Titik LKK ({st.session_state['user_spg']})")
   
-  df_rekap_spg = pd.DataFrame(columns=["Kecamatan", "Warkop_LKK", "Alamat_Warkop", "Jumlah_SPG_Bertugas", "Brand_Rokok", "Konsumen_Beli", "Total_Omset_Bungkus"])
+  df_rekap_spg = pd.DataFrame(columns=["Kecamatan", "Warkop_LKK", "Alamat_Warkop", "Jumlah_SPG_Bertugas", "Konsumen_Beli", "Total_Omset_Bungkus"])
   if not df_current_team_spg.empty:
     df_rekap_spg = (
-        df_current_team_spg.groupby(["Kecamatan", "Warkop_LKK", "Alamat_Warkop", "Brand_Rokok"])
+        df_current_team_spg.groupby(["Kecamatan", "Warkop_LKK", "Alamat_Warkop"])
         .agg(
             Jumlah_SPG_Bertugas=("Nama_SPG", lambda x: ", ".join(x.dropna().unique())),
             Konsumen_Beli=("Nama_Konsumen", "count"),
@@ -1868,7 +1871,6 @@ if st.session_state["login_mode"] == "Supervisi":
         )
         .reset_index()
     )
-    df_rekap_spg["Target_Omset_Team"] = df_rekap_spg["Brand_Rokok"].apply(get_target_team)
 
   df_rekap_sup = pd.DataFrame(columns=["Kecamatan", "Warkop_LKK", "Jumlah_Kontak_Manual"])
   if not df_current_team_sup.empty:
@@ -1882,8 +1884,6 @@ if st.session_state["login_mode"] == "Supervisi":
     if df_rekap_spg.empty:
       df_combine_rekap = df_rekap_sup.copy()
       df_combine_rekap["Jumlah_SPG_Bertugas"] = "-"
-      df_combine_rekap["Brand_Rokok"] = "-"
-      df_combine_rekap["Target_Omset_Team"] = 0
       df_combine_rekap["Konsumen_Beli"] = 0
       df_combine_rekap["Total_Omset_Bungkus"] = 0
       df_combine_rekap["Alamat_Warkop"] = "-"
@@ -1896,10 +1896,10 @@ if st.session_state["login_mode"] == "Supervisi":
           df_rekap_sup,
           on=["Kecamatan", "Warkop_LKK"],
           how="outer"
-      ).fillna({"Jumlah_Kontak_Manual": 0, "Konsumen_Beli": 0, "Total_Omset_Bungkus": 0, "Jumlah_SPG_Bertugas": "-", "Brand_Rokok": "-", "Target_Omset_Team": 0, "Alamat_Warkop": "-"})
+      ).fillna({"Jumlah_Kontak_Manual": 0, "Konsumen_Beli": 0, "Total_Omset_Bungkus": 0, "Jumlah_SPG_Bertugas": "-", "Alamat_Warkop": "-"})
 
     df_combine_rekap = df_combine_rekap[
-        ["Kecamatan", "Warkop_LKK", "Alamat_Warkop", "Jumlah_SPG_Bertugas", "Brand_Rokok", "Target_Omset_Team", "Jumlah_Kontak_Manual", "Konsumen_Beli", "Total_Omset_Bungkus"]
+        ["Kecamatan", "Warkop_LKK", "Alamat_Warkop", "Jumlah_SPG_Bertugas", "Jumlah_Kontak_Manual", "Konsumen_Beli", "Total_Omset_Bungkus"]
     ].sort_values(by="Total_Omset_Bungkus", ascending=False)
 
     st.dataframe(df_combine_rekap, use_container_width=True)
@@ -2100,9 +2100,11 @@ if not df_user_rekap.empty:
       )
       .reset_index()
   )
-  df_eval_spg["Target_SPG"] = df_eval_spg["Brand_Rokok"].apply(get_target_spg)
+  df_eval_spg["Target_SPG"] = df_eval_spg["Brand_Rokok"].apply(
+      lambda b: TARGET_RULES.get(b, {"target_spg": 25})["target_spg"]
+  )
   df_eval_spg["Status_Target_SPG"] = df_eval_spg.apply(
-      lambda r: cek_status_target_spg_val(r["Brand_Rokok"], r["Jumlah_Omset_SPG"]),
+      lambda r: cek_status_target_spg(r["Brand_Rokok"], r["Jumlah_Omset_SPG"]),
       axis=1,
   )
 
