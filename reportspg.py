@@ -131,6 +131,7 @@ st.markdown(
 
 # File database lokal & master
 DB_FILE = "rekap_laporan_spg.csv"
+DB_SUPERVISI_KONTAK_FILE = "rekap_kontak_supervisi.csv"
 MASTER_BRAND_FILE = "master_brand_rokok.json"
 MASTER_LOKASI_FILE = "Master WarkopLKK.xlsx"
 MASTER_SPG_FILE = "master_nama_spg.json"
@@ -158,6 +159,17 @@ EXPECTED_COLUMNS = [
     "Longitude",
 ]
 
+EXPECTED_SUPERVISI_COLUMNS = [
+    "Waktu",
+    "Promotor",
+    "Plat_Mobil",
+    "Kota_Kab",
+    "Kecamatan",
+    "Warkop_LKK",
+    "Alamat_Warkop",
+    "Jumlah_Kontak_Manual",
+]
+
 
 def load_database():
   if os.path.exists(DB_FILE):
@@ -176,6 +188,23 @@ def load_database():
 
 def save_database(df):
   df.to_csv(DB_FILE, index=False)
+
+
+def load_supervisi_database():
+  if os.path.exists(DB_SUPERVISI_KONTAK_FILE):
+    try:
+      df = pd.read_csv(DB_SUPERVISI_KONTAK_FILE)
+      for col in EXPECTED_SUPERVISI_COLUMNS:
+        if col not in df.columns:
+          df[col] = "-"
+      return df[EXPECTED_SUPERVISI_COLUMNS]
+    except Exception:
+      return pd.DataFrame(columns=EXPECTED_SUPERVISI_COLUMNS)
+  return pd.DataFrame(columns=EXPECTED_SUPERVISI_COLUMNS)
+
+
+def save_supervisi_database(df):
+  df.to_csv(DB_SUPERVISI_KONTAK_FILE, index=False)
 
 
 # ====================================================
@@ -889,7 +918,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
     with k2:
       st.markdown(
           f'<div class="kpi-card"><div class="kpi-value">{total_konsumen:,}'
-          '</div><div class="kpi-label">Konsumen</div></div>',
+          '</div><div class="kpi-label">Konsumen Beli</div></div>',
           unsafe_allow_html=True,
       )
     with k3:
@@ -910,7 +939,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
         df_all_users.groupby(["Promotor", "Kota_Kab", "Brand_Rokok"])
         .agg(
             Total_Omset_Team=("Jumlah_Bungkus", "sum"),
-            Total_Konsumen=("Nama_Konsumen", "count"),
+            Total_Konsumen_Beli=("Nama_Konsumen", "count"),
         )
         .reset_index()
     )
@@ -934,9 +963,6 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
     st.markdown("---")
     st.markdown("#### 📑 Log Detail Transaksi All User")
 
-    # ====================================================
-    # MENU HAPUS LOG DETAIL TRANSAKSI ALL USER
-    # ====================================================
     with st.expander("🗑️ Menu Hapus Log Detail Transaksi (Per Row / Hari / Minggu / All Data)", expanded=False):
       st.warning("⚠️ Perhatian: Data yang sudah dihapus dari database tidak dapat dikembalikan.")
       tab_del_row, tab_del_day, tab_del_week, tab_del_all = st.tabs([
@@ -946,7 +972,6 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
           "🚨 Hapus All Data"
       ])
 
-      # 1. HAPUS PER ROW
       with tab_del_row:
         df_indexed = df_all_users.reset_index()
         opsi_rows = [
@@ -973,7 +998,6 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
           else:
             st.warning("Silakan pilih minimal 1 baris transaksi terlebih dahulu.")
 
-      # 2. HAPUS PER HARI
       with tab_del_day:
         daftar_tanggal = sorted(
             df_all_users["Tanggal"].dropna().unique().tolist(), reverse=True
@@ -996,7 +1020,6 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
         else:
           st.info("Tidak ada data tanggal valid untuk dihapus.")
 
-      # 3. HAPUS PER MINGGU
       with tab_del_week:
         df_valid_dt = df_all_users.dropna(subset=["Waktu_Dt"]).copy()
         if not df_valid_dt.empty:
@@ -1036,7 +1059,6 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
         else:
           st.info("Tidak ada data waktu valid untuk pengelompokan mingguan.")
 
-      # 4. HAPUS ALL DATA
       with tab_del_all:
         st.error(
             f"🚨 Tindakan ini akan menghapus **SELURUH ({len(df_all_users)} baris)** data transaksi dari database secara permanen!"
@@ -1085,7 +1107,6 @@ if not st.session_state["logged_in"]:
 
     st.markdown("#### 🚀 Pilih Mode Masuk & Akun Operasional")
     
-    # Tombol besar bersebelahan untuk memilih mode (SPG vs Supervisi)
     col_btn_mode1, col_btn_mode2 = st.columns(2)
     with col_btn_mode1:
       if st.button("📝 LOGIN SPG\n(Entry Laporan Konsumen)", use_container_width=True, type="primary" if st.session_state["login_mode"] == "SPG" else "secondary"):
@@ -1107,7 +1128,6 @@ if not st.session_state["logged_in"]:
       if st.session_state["login_mode"] == "Supervisi":
         plat_mobil_input = st.text_input("🚗 Plat Nomor Mobil Operasional Supervisi", placeholder="Contoh: L 1234 ABC")
 
-      # Cek jadwal & status hari ini secara real-time
       has_schedule, schedule_warning_msg, auto_detected_kota = get_schedule_info_for_team(pilihan_user)
 
       if not has_schedule:
@@ -1268,10 +1288,6 @@ else:
 # VALIDASI JADWAL SPG DARI EXCEL (Jadwal SPG.xlsx)
 # ====================================================
 df_jadwal_raw = load_jadwal_spg()
-is_scheduled_today = True
-schedule_check_msg = ""
-
-# Ambil daftar kecamatan sesuai jadwal team hari ini
 daftar_kecamatan_terjadwal = []
 if not df_jadwal_raw.empty:
   kota_col_j = next((c for c in df_jadwal_raw.columns if "kota" in c.lower()), None)
@@ -1365,71 +1381,158 @@ st.markdown(
 )
 
 # ====================================================
-# JIKA KONDISI LOGIN SUPERVISI: TAMPILKAN MENU MONITORING
+# JIKA KONDISI LOGIN SUPERVISI: TAMPILKAN MENU MONITORING & ENTRY KONTAK
 # ====================================================
 if st.session_state["login_mode"] == "Supervisi":
   st.markdown("---")
-  st.markdown(f"### 👀 Dashboard Monitoring Team: {st.session_state['user_spg']} (Plat: `{st.session_state['plat_mobil']}`)")
-  st.caption("Pantau ringkasan performa kunjungan, jumlah kontak konsumen, nama SPG bertugas, dan omset per LKK secara real-time.")
+  st.markdown(f"### 👀 Dashboard Monitoring & Entry Supervisi: {st.session_state['user_spg']} (Plat: `{st.session_state['plat_mobil']}`)")
+  st.caption("Supervisor dapat menginput jumlah kontak konsumen di warkop ini dan melihat kombinasi hasil penjualan SPG secara real-time.")
 
-  # Ambil data dari database untuk team ini di lokasi/kecamatan ini
+  # Form Supervisi untuk Entry Manual Jumlah Kontak Konsumen
+  with st.form("form_entry_kontak_supervisi"):
+    st.markdown("#### 📝 Input Manual Jumlah Kontak Konsumen (Oleh Supervisi)")
+    jumlah_kontak_input = st.number_input(
+        f"Jumlah Kontak Konsumen di {nama_warkop_manual}",
+        min_value=0,
+        step=1,
+        value=0,
+        help="Masukkan jumlah total orang/konsumen yang berhasil dikontak di warkop ini"
+    )
+    btn_simpan_kontak = st.form_submit_button("💾 Simpan Jumlah Kontak Warkop Ini", type="primary")
+
+    if btn_simpan_kontak:
+      df_sup_db = load_supervisi_database()
+      # Cek apakah sudah ada entri untuk team, kota, kecamatan, warkop pada hari ini (atau simpan baru)
+      tgl_hari_ini = datetime.now().strftime("%Y-%m-%d")
+      
+      new_sup_row = {
+          "Waktu": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+          "Promotor": st.session_state["user_spg"],
+          "Plat_Mobil": st.session_state["plat_mobil"],
+          "Kota_Kab": st.session_state["kota_kab"],
+          "Kecamatan": kecamatan_pilihan,
+          "Warkop_LKK": str(nama_warkop_manual).strip(),
+          "Alamat_Warkop": alamat_warkop_terpilih,
+          "Jumlah_Kontak_Manual": int(jumlah_kontak_input),
+      }
+      df_sup_db = pd.concat([df_sup_db, pd.DataFrame([new_sup_row])], ignore_index=True)
+      save_supervisi_database(df_sup_db)
+      st.success(f"✅ Berhasil mencatat **{jumlah_kontak_input} kontak konsumen** untuk warkop **{nama_warkop_manual}**!")
+
+  st.markdown("---")
+
+  # Ambil data dari database transaksi SPG & database kontak supervisi
   df_all_db = load_database()
-  df_current_team = pd.DataFrame()
+  df_sup_db = load_supervisi_database()
+
+  df_current_team_spg = pd.DataFrame()
   if not df_all_db.empty and "Promotor" in df_all_db.columns:
-    df_current_team = df_all_db[df_all_db["Promotor"] == st.session_state["user_spg"]].copy()
+    df_current_team_spg = df_all_db[df_all_db["Promotor"] == st.session_state["user_spg"]].copy()
 
-  if not df_current_team.empty:
-    df_current_team["Jumlah_Bungkus"] = pd.to_numeric(df_current_team["Jumlah_Bungkus"], errors="coerce").fillna(0)
-    
-    # Filter per LKK yang sedang dipilih
-    df_lkk_active = df_current_team[df_current_team["Warkop_LKK"].astype(str).str.strip() == str(nama_warkop_manual).strip()]
+  df_current_team_sup = pd.DataFrame()
+  if not df_sup_db.empty and "Promotor" in df_sup_db.columns:
+    df_current_team_sup = df_sup_db[df_sup_db["Promotor"] == st.session_state["user_spg"]].copy()
 
-    col_mon1, col_mon2, col_mon3 = st.columns(3)
-    with col_mon1:
-      total_kontak_lkk = len(df_lkk_active)
-      st.markdown(
-          f'<div class="kpi-card"><div class="kpi-value">{total_kontak_lkk}</div>'
-          '<div class="kpi-label">Kontak Konsumen (LKK Ini)</div></div>',
-          unsafe_allow_html=True,
-      )
-    with col_mon2:
-      total_omset_lkk = int(df_lkk_active["Jumlah_Bungkus"].sum())
-      st.markdown(
-          f'<div class="kpi-card"><div class="kpi-value">{total_omset_lkk:,} bks</div>'
-          '<div class="kpi-label">Omset LKK Ini (Combine SPG)</div></div>',
-          unsafe_allow_html=True,
-      )
-    with col_mon3:
-      spg_list_str = ", ".join(df_lkk_active["Nama_SPG"].dropna().unique().tolist()) if not df_lkk_active.empty else "Belum ada SPG"
-      st.markdown(
-          f'<div class="kpi-card" style="border-left-color: #3b82f6;"><div class="kpi-value" style="font-size: 1.1rem; padding-top: 6px;">{spg_list_str}</div>'
-          '<div class="kpi-label">Nama SPG Bertugas</div></div>',
-          unsafe_allow_html=True,
-      )
+  # Filter transaksi SPG per LKK aktif
+  df_lkk_active_spg = pd.DataFrame()
+  if not df_current_team_spg.empty:
+    df_current_team_spg["Jumlah_Bungkus"] = pd.to_numeric(df_current_team_spg["Jumlah_Bungkus"], errors="coerce").fillna(0)
+    df_lkk_active_spg = df_current_team_spg[df_current_team_spg["Warkop_LKK"].astype(str).str.strip() == str(nama_warkop_manual).strip()]
 
-    st.markdown("---")
-    st.markdown(f"#### 📊 Rekapitulasi Per Titik LKK Wajib Kunjung ({st.session_state['user_spg']})")
-    
-    df_rekap_lkk = (
-        df_current_team.groupby(["Kecamatan", "Warkop_LKK", "Alamat_Warkop"])
+  # Ambil total kontak manual supervisi terbaru untuk LKK aktif ini
+  kontak_manual_lkk_ini = 0
+  if not df_current_team_sup.empty:
+    df_lkk_active_sup = df_current_team_sup[df_current_team_sup["Warkop_LKK"].astype(str).str.strip() == str(nama_warkop_manual).strip()]
+    if not df_lkk_active_sup.empty:
+      kontak_manual_lkk_ini = int(df_lkk_active_sup["Jumlah_Kontak_Manual"].astype(int).sum())
+
+  col_mon1, col_mon2, col_mon3, col_mon4 = st.columns(4)
+  with col_mon1:
+    st.markdown(
+        f'<div class="kpi-card"><div class="kpi-value">{kontak_manual_lkk_ini}</div>'
+        '<div class="kpi-label">Kontak (Input Supervisi)</div></div>',
+        unsafe_allow_html=True,
+    )
+  with col_mon2:
+    total_konsumen_beli = len(df_lkk_active_spg)
+    st.markdown(
+        f'<div class="kpi-card"><div class="kpi-value">{total_konsumen_beli}</div>'
+        '<div class="kpi-label">Konsumen Beli (SPG)</div></div>',
+        unsafe_allow_html=True,
+    )
+  with col_mon3:
+    total_omset_lkk = int(df_lkk_active_spg["Jumlah_Bungkus"].sum()) if not df_lkk_active_spg.empty else 0
+    st.markdown(
+        f'<div class="kpi-card"><div class="kpi-value">{total_omset_lkk:,} bks</div>'
+        '<div class="kpi-label">Omset LKK Ini</div></div>',
+        unsafe_allow_html=True,
+    )
+  with col_mon4:
+    spg_list_str = ", ".join(df_lkk_active_spg["Nama_SPG"].dropna().unique().tolist()) if not df_lkk_active_spg.empty else "Belum ada SPG"
+    st.markdown(
+        f'<div class="kpi-card" style="border-left-color: #3b82f6;"><div class="kpi-value" style="font-size: 1.0rem; padding-top: 6px;">{spg_list_str}</div>'
+        '<div class="kpi-label">SPG Bertugas</div></div>',
+        unsafe_allow_html=True,
+    )
+
+  st.markdown("---")
+  st.markdown(f"#### 📊 Rekapitulasi Combine Per Titik LKK ({st.session_state['user_spg']})")
+  
+  # Grouping data SPG (Konsumen Beli & Omset Bungkus)
+  df_rekap_spg = pd.DataFrame(columns=["Kecamatan", "Warkop_LKK", "Alamat_Warkop", "Jumlah_SPG_Bertugas", "Konsumen_Beli", "Total_Omset_Bungkus"])
+  if not df_current_team_spg.empty:
+    df_rekap_spg = (
+        df_current_team_spg.groupby(["Kecamatan", "Warkop_LKK", "Alamat_Warkop"])
         .agg(
             Jumlah_SPG_Bertugas=("Nama_SPG", lambda x: ", ".join(x.dropna().unique())),
-            Jumlah_Kontak_Konsumen=("Nama_Konsumen", "count"),
+            Konsumen_Beli=("Nama_Konsumen", "count"),
             Total_Omset_Bungkus=("Jumlah_Bungkus", "sum")
         )
         .reset_index()
-        .sort_values(by="Total_Omset_Bungkus", ascending=False)
     )
 
-    st.dataframe(df_rekap_lkk, use_container_width=True)
+  # Grouping data Supervisi (Kontak Konsumen Manual)
+  df_rekap_sup = pd.DataFrame(columns=["Kecamatan", "Warkop_LKK", "Jumlah_Kontak_Manual"])
+  if not df_current_team_sup.empty:
+    df_rekap_sup = (
+        df_current_team_sup.groupby(["Kecamatan", "Warkop_LKK"])
+        .agg(Jumlah_Kontak_Manual=("Jumlah_Kontak_Manual", "sum"))
+        .reset_index()
+    )
 
-    st.markdown("#### 📑 Log Detail Konsumen di Warkop Ini")
-    if not df_lkk_active.empty:
-      st.dataframe(df_lkk_active.drop(columns=["Waktu", "Promotor", "Plat_Mobil"], errors="ignore"), use_container_width=True)
+  # Merge rekap SPG dan rekap Supervisi
+  if not df_rekap_spg.empty or not df_rekap_sup.empty:
+    if df_rekap_spg.empty:
+      df_combine_rekap = df_rekap_sup.copy()
+      df_combine_rekap["Jumlah_SPG_Bertugas"] = "-"
+      df_combine_rekap["Konsumen_Beli"] = 0
+      df_combine_rekap["Total_Omset_Bungkus"] = 0
+      df_combine_rekap["Alamat_Warkop"] = "-"
+    elif df_rekap_sup.empty:
+      df_combine_rekap = df_rekap_spg.copy()
+      df_combine_rekap["Jumlah_Kontak_Manual"] = 0
     else:
-      st.info(f"Belum ada data konsumen masuk untuk titik Warkop / LKK '{nama_warkop_manual}'.")
+      df_combine_rekap = pd.merge(
+          df_rekap_spg,
+          df_rekap_sup,
+          on=["Kecamatan", "Warkop_LKK"],
+          how="outer"
+      ).fillna({"Jumlah_Kontak_Manual": 0, "Konsumen_Beli": 0, "Total_Omset_Bungkus": 0, "Jumlah_SPG_Bertugas": "-", "Alamat_Warkop": "-"})
+
+    # Susun urutan kolom yang rapi
+    df_combine_rekap = df_combine_rekap[
+        ["Kecamatan", "Warkop_LKK", "Alamat_Warkop", "Jumlah_SPG_Bertugas", "Jumlah_Kontak_Manual", "Konsumen_Beli", "Total_Omset_Bungkus"]
+    ].sort_values(by="Total_Omset_Bungkus", ascending=False)
+
+    st.dataframe(df_combine_rekap, use_container_width=True)
   else:
-    st.info("Belum ada data transaksi atau kunjungan tercatat untuk team ini.")
+    st.info("Belum ada data rekapitulasi gabungan untuk team ini.")
+
+  st.markdown("#### 📑 Log Detail Konsumen Beli (SPG) di Warkop Ini")
+  if not df_lkk_active_spg.empty:
+    st.dataframe(df_lkk_active_spg.drop(columns=["Waktu", "Promotor", "Plat_Mobil"], errors="ignore"), use_container_width=True)
+  else:
+    st.info(f"Belum ada data konsumen beli masuk untuk titik Warkop / LKK '{nama_warkop_manual}'.")
 
   st.stop()
 
