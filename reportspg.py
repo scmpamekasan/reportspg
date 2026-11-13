@@ -122,7 +122,7 @@ st.markdown(
 # File database lokal agar data persisten
 DB_FILE = "rekap_laporan_spg.csv"
 MASTER_BRAND_FILE = "master_brand_rokok.json"
-MASTER_LOKASI_FILE = "master_lokasi_warkop.json"
+MASTER_LOKASI_FILE = "Master WarkopLKK.xlsx"  # Diubah membaca langsung dari file Excel repository
 MASTER_PLAT_FILE = "master_plat_kendaraan.json"
 MASTER_SPG_FILE = "master_nama_spg.json"
 
@@ -165,7 +165,7 @@ def save_database(df):
 
 
 # ====================================================
-# MANAJEMEN MASTER DATA (BRAND, LOKASI, PLAT & SPG)
+# MANAJEMEN MASTER DATA (BRAND, LOKASI/EXCEL, PLAT & SPG)
 # ====================================================
 DEFAULT_BRANDS = [
     "D.Super 12",
@@ -173,13 +173,6 @@ DEFAULT_BRANDS = [
     "D.76 Apel Royal",
     "Black Matcha K12",
     "Djarum 76 Aksara",
-]
-DEFAULT_LOKASI = [
-    "Warkop Cak No",
-    "Warkop Pitoe",
-    "Warkop Giras",
-    "Warkop Madura",
-    "Warkop 88",
 ]
 DEFAULT_PLATS = [
     "L 1774 BAS",
@@ -208,19 +201,40 @@ def save_master_brands(brands):
     json.dump(brands, f, ensure_ascii=False, indent=2)
 
 
-def load_master_lokasi():
+def load_master_lokasi_excel():
+  """Membaca master warkop/LKK dari file Excel 'Master WarkopLKK.xlsx'.
+
+  Diharapkan file Excel memiliki kolom yang mengandung kata 'Kecamatan' dan
+  'Warkop' atau 'LKK' atau 'Nama'.
+  """
   if os.path.exists(MASTER_LOKASI_FILE):
     try:
-      with open(MASTER_LOKASI_FILE, "r", encoding="utf-8") as f:
-        return json.load(f)
-    except Exception:
-      return DEFAULT_LOKASI
-  return DEFAULT_LOKASI
+      df_excel = pd.read_excel(MASTER_LOKASI_FILE)
+      # Normalisasi nama kolom menjadi lowercase untuk pencarian fleksibel
+      df_excel.columns = [str(c).strip() for c in df_excel.columns]
+      return df_excel
+    except Exception as e:
+      st.error(f"Gagal membaca file Excel {MASTER_LOKASI_FILE}: {e}")
+      return pd.DataFrame(columns=["Kecamatan", "Warkop_LKK"])
+  else:
+    # Fallback DataFrame kosong jika file belum ada
+    return pd.DataFrame(
+        columns=["Kecamatan", "Warkop_LKK"],
+        data=[
+            ["Kecamatan Default", "Warkop Cak No"],
+            ["Kecamatan Default", "Warkop Pitoe"],
+        ],
+    )
 
 
-def save_master_lokasi(lokasi):
-  with open(MASTER_LOKASI_FILE, "w", encoding="utf-8") as f:
-    json.dump(lokasi, f, ensure_ascii=False, indent=2)
+def save_master_lokasi_excel(df_excel):
+  """Menyimpan kembali DataFrame master warkop ke file Excel."""
+  try:
+    df_excel.to_excel(MASTER_LOKASI_FILE, index=False)
+    return True
+  except Exception as e:
+    st.error(f"Gagal menyimpan file Excel: {e}")
+    return False
 
 
 def load_master_plats():
@@ -321,9 +335,7 @@ if not st.session_state["logged_in"]:
 
     if not st.session_state["admin_logged_in"]:
       with st.form("form_admin_login"):
-        pass_input = st.text_input(
-            "Password Admin", type="password"
-        )
+        pass_input = st.text_input("Password Admin", type="password")
         btn_pass = st.form_submit_button("Buka Dashboard Admin")
 
         if btn_pass:
@@ -348,7 +360,7 @@ if not st.session_state["logged_in"]:
       if st.button("🚬 Master Merek Rokok", use_container_width=True):
         st.session_state["admin_view"] = "Master_Brand"
         st.rerun()
-      if st.button("📍 Master Lokasi Warkop", use_container_width=True):
+      if st.button("📍 Master Lokasi Warkop (Excel)", use_container_width=True):
         st.session_state["admin_view"] = "Master_Lokasi"
         st.rerun()
       if st.button("🚗 Master Plat Kendaraan", use_container_width=True):
@@ -479,46 +491,85 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
       st.rerun()
     st.stop()
 
-  # --- TAMPILAN 3: MASTER DATA LOKASI WARKOP ---
+  # --- TAMPILAN 3: MASTER DATA LOKASI WARKOP DARI FILE EXCEL ---
   elif st.session_state["admin_view"] == "Master_Lokasi":
-    st.markdown("## 📍 Master Data: Lokasi Warkop / LKK")
+    st.markdown("## 📍 Master Data: Lokasi Warkop / LKK (Excel)")
     st.caption(
-        "Kelola daftar titik warkop atau lokasi kunjungan standar operasional."
+        "Mengelola data warkop/LKK dari file repository: Master WarkopLKK.xlsx"
     )
 
-    current_lokasi = load_master_lokasi()
+    df_lokasi_excel = load_master_lokasi_excel()
 
-    with st.form("form_tambah_lokasi"):
-      new_lokasi_name = st.text_input(
-          "Nama Warkop / LKK Baru", placeholder="Contoh: Warkop Barokah"
+    # Identifikasi kolom secara fleksibel
+    cols_available = df_lokasi_excel.columns.tolist()
+    st.info(
+        f"📁 Sumber file aktif: `{MASTER_LOKASI_FILE}` | Kolom terdeteksi:"
+        f" {cols_available}"
+    )
+
+    with st.form("form_tambah_lokasi_excel"):
+      st.markdown("#### Tambah Baris Warkop / LKK Baru ke Excel")
+      # Cari kolom kecamatan & warkop di excel jika ada, atau sediakan input standar
+      col_kec_input = st.text_input(
+          "Kecamatan", placeholder="Contoh: Tegalsari"
       )
-      btn_add_lokasi = st.form_submit_button("➕ Tambah Lokasi Warkop")
-      if btn_add_lokasi:
-        if new_lokasi_name.strip():
-          if new_lokasi_name.strip() not in current_lokasi:
-            current_lokasi.append(new_lokasi_name.strip())
-            save_master_lokasi(current_lokasi)
+      col_warkop_input = st.text_input(
+          "Nama Warkop / LKK", placeholder="Contoh: Warkop Barokah"
+      )
+      btn_add_excel = st.form_submit_button("➕ Tambah & Simpan ke Excel")
+
+      if btn_add_excel:
+        if col_kec_input.strip() and col_warkop_input.strip():
+          # Cari nama kolom yang mirip untuk kecamatan dan warkop
+          kec_col_name = next(
+              (
+                  c
+                  for c in df_lokasi_excel.columns
+                  if "kec" in c.lower() or "wilayah" in c.lower()
+              ),
+              "Kecamatan",
+          )
+          warkop_col_name = next(
+              (
+                  c
+                  for c in df_lokasi_excel.columns
+                  if "warkop" in c.lower()
+                  or "lkk" in c.lower()
+                  or "nama" in c.lower()
+              ),
+              "Warkop_LKK",
+          )
+
+          new_row = {
+              kec_col_name: col_kec_input.strip(),
+              warkop_col_name: col_warkop_input.strip(),
+          }
+          df_lokasi_excel = pd.concat(
+              [df_lokasi_excel, pd.DataFrame([new_row])], ignore_index=True
+          )
+          if save_master_lokasi_excel(df_lokasi_excel):
             st.success(
-                f"✅ Lokasi '{new_lokasi_name.strip()}' berhasil ditambahkan!"
+                f"✅ Warkop '{col_warkop_input.strip()}' di Kecamatan"
+                f" '{col_kec_input.strip()}' berhasil ditambahkan ke"
+                f" {MASTER_LOKASI_FILE}!"
             )
             st.rerun()
-          else:
-            st.warning("Lokasi warkop tersebut sudah ada dalam daftar.")
         else:
-          st.warning("Mohon masukkan nama lokasi.")
+          st.warning("Mohon isi nama Kecamatan dan Nama Warkop/LKK.")
 
     st.markdown("---")
-    st.markdown("#### 📋 Daftar Warkop / LKK Aktif")
-    for idx, l in enumerate(current_lokasi):
-      col_l1, col_l2 = st.columns([0.8, 0.2])
-      with col_l1:
-        st.write(f"**{idx+1}.** {l}")
-      with col_l2:
-        if st.button("🗑️ Hapus", key=f"del_lokasi_{idx}"):
-          current_lokasi.pop(idx)
-          save_master_lokasi(current_lokasi)
-          st.success("Lokasi berhasil dihapus!")
+    st.markdown("#### 📋 Preview Data Warkop/LKK dari Excel")
+    if not df_lokasi_excel.empty:
+      # Tampilkan tabel interaktif untuk melihat isi excel
+      edited_df = st.data_editor(
+          df_lokasi_excel, use_container_width=True, key="editor_excel_warkop"
+      )
+      if st.button("💾 Simpan Perubahan Edit Tabel"):
+        if save_master_lokasi_excel(edited_df):
+          st.success("✅ Perubahan pada Master Warkop berhasil disimpan!")
           st.rerun()
+    else:
+      st.warning("File Excel master warkop kosong atau tidak ditemukan formatnya.")
 
     st.markdown("---")
     if st.button("⬅️ Kembali ke Dashboard"):
@@ -763,7 +814,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
       st.session_state["admin_view"] = "Master_SPG"
       st.rerun()
     if st.button(
-        "📍 Lokasi Warkop\nKelola titik warkop/LKK",
+        "📍 Lokasi Warkop (Excel)\nKelola dari Master WarkopLKK.xlsx",
         use_container_width=True,
     ):
       st.session_state["admin_view"] = "Master_Lokasi"
@@ -1100,11 +1151,62 @@ kecamatan_pilihan = st.selectbox(
     help="Otomatis terpilih berdasarkan titik koordinat GPS Anda saat ini",
 )
 
-daftar_master_lokasi = load_master_lokasi()
+# ====================================================
+# FILTER WARKOP/LKK SESUAI KECAMATAN DARI EXCEL
+# ====================================================
+df_master_excel = load_master_lokasi_excel()
+filtered_warkop_list = []
+
+if not df_master_excel.empty:
+  # Deteksi nama kolom kecamatan & warkop secara fleksibel pada file Excel
+  col_kec_excel = next(
+      (
+          c
+          for c in df_master_excel.columns
+          if "kec" in c.lower() or "wilayah" in c.lower()
+      ),
+      None,
+  )
+  col_warkop_excel = next(
+      (
+          c
+          for c in df_master_excel.columns
+          if "warkop" in c.lower() or "lkk" in c.lower() or "nama" in c.lower()
+      ),
+      None,
+  )
+
+  if col_kec_excel and col_warkop_excel:
+    # Filter warkop berdasarkan kecamatan yang dipilih SPG (case-insensitive & strip)
+    mask = (
+        df_master_excel[col_kec_excel].astype(str).str.strip().str.lower()
+        == str(kecamatan_pilihan).strip().lower()
+    )
+    filtered_warkop_list = (
+        df_master_excel[mask][col_warkop_excel].dropna().unique().tolist()
+    )
+
+    # Jika tidak ada yang cocok persis, tampilkan seluruh warkop atau fallback
+    if not filtered_warkop_list:
+      filtered_warkop_list = (
+          df_master_excel[col_warkop_excel].dropna().unique().tolist()
+      )
+  else:
+    # Jika struktur kolom tidak dikenali, ambil kolom pertama atau kedua
+    filtered_warkop_list = (
+        df_master_excel.iloc[:, -1].dropna().unique().tolist()
+    )
+
+if not filtered_warkop_list:
+  filtered_warkop_list = ["Warkop Alternatif 1", "Warkop Alternatif 2"]
+
 nama_warkop_manual = st.selectbox(
-    "Pilih / Nama Warkop / LKK",
-    options=daftar_master_lokasi,
-    help="Dikelola melalui Master Data Lokasi Admin",
+    f"Pilih Warkop / LKK di Kecamatan {kecamatan_pilihan}",
+    options=filtered_warkop_list,
+    help=(
+        "Daftar warkop difilter otomatis dari file Master WarkopLKK.xlsx sesuai"
+        " kecamatan aktif"
+    ),
 )
 
 if (
@@ -1114,7 +1216,7 @@ if (
 ):
   st.success(
       f"✅ Form laporan untuk **{str(nama_spg_manual).strip()}** di"
-      f" **Kecamatan {kecamatan_pilihan}** siap diisi."
+      f" **Kecamatan {kecamatan_pilihan}** ({nama_warkop_manual}) siap diisi."
   )
   st.markdown("---")
 
@@ -1241,8 +1343,8 @@ else:
     )
   else:
     st.info(
-        "ℹ️ Silakan pilih **Nama SPG** dan pilih **Warkop/LKK** terlebih"
-        " dahulu untuk membuka form."
+        "ℹ️ Silakan pilih **Nama SPG** dan pastikan **Warkop/LKK** terpilih untuk"
+        " membuka form."
     )
 
 st.markdown("---")
