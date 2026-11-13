@@ -124,6 +124,7 @@ DB_FILE = "rekap_laporan_spg.csv"
 MASTER_BRAND_FILE = "master_brand_rokok.json"
 MASTER_LOKASI_FILE = "master_lokasi_warkop.json"
 MASTER_PLAT_FILE = "master_plat_kendaraan.json"
+MASTER_SPG_FILE = "master_nama_spg.json"
 
 EXPECTED_COLUMNS = [
     "Waktu",
@@ -164,7 +165,7 @@ def save_database(df):
 
 
 # ====================================================
-# MANAJEMEN MASTER DATA (BRAND, LOKASI & PLAT KENDARAAN)
+# MANAJEMEN MASTER DATA (BRAND, LOKASI, PLAT & SPG)
 # ====================================================
 DEFAULT_BRANDS = [
     "D.Super 12",
@@ -189,6 +190,7 @@ DEFAULT_PLATS = [
     "B 2644 UYA",
     "L 1728 BAY",
 ]
+DEFAULT_SPGS = ["Nanda", "Dewi", "Aci", "Ayu"]
 
 
 def load_master_brands():
@@ -234,6 +236,21 @@ def load_master_plats():
 def save_master_plats(plats):
   with open(MASTER_PLAT_FILE, "w", encoding="utf-8") as f:
     json.dump(plats, f, ensure_ascii=False, indent=2)
+
+
+def load_master_spgs():
+  if os.path.exists(MASTER_SPG_FILE):
+    try:
+      with open(MASTER_SPG_FILE, "r", encoding="utf-8") as f:
+        return json.load(f)
+    except Exception:
+      return DEFAULT_SPGS
+  return DEFAULT_SPGS
+
+
+def save_master_spgs(spgs):
+  with open(MASTER_SPG_FILE, "w", encoding="utf-8") as f:
+    json.dump(spgs, f, ensure_ascii=False, indent=2)
 
 
 def tentukan_status_target(row):
@@ -302,7 +319,10 @@ if not st.session_state["logged_in"]:
       ):
         st.session_state["admin_view"] = "Dashboard"
         st.rerun()
-      if st.button("📋 Master Merek Rokok", use_container_width=True):
+      if st.button("👩‍💼 Master Nama SPG", use_container_width=True):
+        st.session_state["admin_view"] = "Master_SPG"
+        st.rerun()
+      if st.button("🚬 Master Merek Rokok", use_container_width=True):
         st.session_state["admin_view"] = "Master_Brand"
         st.rerun()
       if st.button("📍 Master Lokasi Warkop", use_container_width=True):
@@ -325,8 +345,52 @@ if not st.session_state["logged_in"]:
 # ====================================================
 if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
 
-  # --- TAMPILAN 1: MASTER DATA MEREK ROKOK ---
-  if st.session_state["admin_view"] == "Master_Brand":
+  # --- TAMPILAN 1: MASTER DATA NAMA SPG ---
+  if st.session_state["admin_view"] == "Master_SPG":
+    st.markdown("## 👩‍💼 Master Data: Nama SPG")
+    st.caption("Tambah, ubah, atau hapus daftar nama SPG aktif.")
+
+    current_spgs = load_master_spgs()
+
+    with st.form("form_tambah_spg"):
+      new_spg_name = st.text_input(
+          "Nama SPG Baru", placeholder="Contoh: Siska"
+      )
+      btn_add_spg = st.form_submit_button("➕ Tambah Nama SPG")
+      if btn_add_spg:
+        spg_clean = new_spg_name.strip()
+        if spg_clean:
+          if spg_clean not in current_spgs:
+            current_spgs.append(spg_clean)
+            save_master_spgs(current_spgs)
+            st.success(f"✅ Nama SPG '{spg_clean}' berhasil ditambahkan!")
+            st.rerun()
+          else:
+            st.warning("Nama SPG tersebut sudah ada dalam daftar.")
+        else:
+          st.warning("Mohon masukkan nama SPG.")
+
+    st.markdown("---")
+    st.markdown("#### 📋 Daftar Nama SPG Terdaftar")
+    for idx, s in enumerate(current_spgs):
+      col_s1, col_s2 = st.columns([0.8, 0.2])
+      with col_s1:
+        st.write(f"**{idx+1}.** {s}")
+      with col_s2:
+        if st.button("🗑️ Hapus", key=f"del_spg_{idx}"):
+          current_spgs.pop(idx)
+          save_master_spgs(current_spgs)
+          st.success("Nama SPG berhasil dihapus!")
+          st.rerun()
+
+    st.markdown("---")
+    if st.button("⬅️ Kembali ke Dashboard"):
+      st.session_state["admin_view"] = "Dashboard"
+      st.rerun()
+    st.stop()
+
+  # --- TAMPILAN 2: MASTER DATA MEREK ROKOK ---
+  elif st.session_state["admin_view"] == "Master_Brand":
     st.markdown("## 🚬 Master Data: Merek Rokok")
     st.caption("Tambah, ubah, atau hapus daftar merek rokok aktif.")
 
@@ -370,7 +434,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
       st.rerun()
     st.stop()
 
-  # --- TAMPILAN 2: MASTER DATA LOKASI WARKOP ---
+  # --- TAMPILAN 3: MASTER DATA LOKASI WARKOP ---
   elif st.session_state["admin_view"] == "Master_Lokasi":
     st.markdown("## 📍 Master Data: Lokasi Warkop / LKK")
     st.caption(
@@ -417,7 +481,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
       st.rerun()
     st.stop()
 
-  # --- TAMPILAN 3: MASTER DATA PLAT KENDARAAN ---
+  # --- TAMPILAN 4: MASTER DATA PLAT KENDARAAN ---
   elif st.session_state["admin_view"] == "Master_Plat":
     st.markdown("## 🚗 Master Data: Plat Kendaraan Operasional")
     st.caption(
@@ -463,7 +527,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
       st.rerun()
     st.stop()
 
-  # --- TAMPILAN 4: ANALITIK & REKAP ALL ---
+  # --- TAMPILAN 5: ANALITIK & REKAP ALL ---
   elif st.session_state["admin_view"] == "Analitik":
     st.markdown("## 📊 Analitik & Rekapitulasi All User")
     st.caption(
@@ -503,22 +567,27 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
 
   # Grid Kartu Menu Admin
   st.markdown("#### 📦 Master Data")
-  col_m1, col_m2, col_m3 = st.columns(3)
+  col_m1, col_m2 = st.columns(2)
   with col_m1:
     if st.button(
-        "🚬 Merek Rokok\nKelola daftar merek",
+        "👩‍💼 Nama SPG\nKelola daftar SPG",
         use_container_width=True,
     ):
-      st.session_state["admin_view"] = "Master_Brand"
+      st.session_state["admin_view"] = "Master_SPG"
       st.rerun()
-  with col_m2:
     if st.button(
         "📍 Lokasi Warkop\nKelola titik warkop/LKK",
         use_container_width=True,
     ):
       st.session_state["admin_view"] = "Master_Lokasi"
       st.rerun()
-  with col_m3:
+  with col_m2:
+    if st.button(
+        "🚬 Merek Rokok\nKelola daftar merek",
+        use_container_width=True,
+    ):
+      st.session_state["admin_view"] = "Master_Brand"
+      st.rerun()
     if st.button(
         "🚗 Plat Kendaraan\nKelola nopol tim",
         use_container_width=True,
@@ -909,7 +978,16 @@ else:
   )
 
 st.markdown("### 📋 Lokasi Kunjungan")
-nama_spg_manual = st.text_input("Nama SPG (Entry Manual)", placeholder="Contoh: Nanda")
+
+# Pilihan Nama SPG terhubung langsung dengan Master Data Nama SPG
+daftar_master_spg = load_master_spgs()
+if daftar_master_spg:
+  nama_spg_manual = st.selectbox("Pilih Nama SPG", options=daftar_master_spg)
+else:
+  nama_spg_manual = st.text_input(
+      "Nama SPG (Entry Manual)", placeholder="Contoh: Nanda"
+  )
+
 kecamatan_pilihan = st.selectbox(
     f"Pilih Kecamatan Tujuan Kunjungan ({st.session_state['kota_kab']})",
     daftar_kecamatan if daftar_kecamatan else ["Kecamatan Umum"],
@@ -925,20 +1003,20 @@ nama_warkop_manual = st.selectbox(
 
 if (
     is_inside_geofence
-    and nama_spg_manual.strip() != ""
-    and nama_warkop_manual.strip() != ""
+    and str(nama_spg_manual).strip() != ""
+    and str(nama_warkop_manual).strip() != ""
 ):
   st.success(
-      f"✅ Form laporan untuk **{nama_spg_manual.strip()}** di **Kecamatan"
-      f" {kecamatan_pilihan}** siap diisi."
+      f"✅ Form laporan untuk **{str(nama_spg_manual).strip()}** di"
+      f" **Kecamatan {kecamatan_pilihan}** siap diisi."
   )
   st.markdown("---")
   with st.form("form_laporan_spg"):
     st.markdown("### 📝 Form Input Laporan Konsumen")
     st.write(
         f"**Team Login:** {st.session_state['user_spg']} | **Nama SPG:**"
-        f" {nama_spg_manual.strip()} | **Warkop/LKK:**"
-        f" {nama_warkop_manual.strip()}"
+        f" {str(nama_spg_manual).strip()} | **Warkop/LKK:**"
+        f" {str(nama_warkop_manual).strip()}"
     )
 
     # Brand rokok terhubung langsung dengan Master Merek Rokok
@@ -980,11 +1058,11 @@ if (
         data_baru = {
             "Waktu": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "Promotor": st.session_state["user_spg"],
-            "Nama_SPG": nama_spg_manual.strip(),
+            "Nama_SPG": str(nama_spg_manual).strip(),
             "Kota_Kab": st.session_state["kota_kab"],
             "Plat_Kendaraan": st.session_state["plat_kendaraan"],
             "Kecamatan": kecamatan_pilihan,
-            "Warkop_LKK": nama_warkop_manual.strip(),
+            "Warkop_LKK": str(nama_warkop_manual).strip(),
             "Brand_Rokok": brand_entry,
             "Nama_Konsumen": nama_konsumen.strip(),
             "Gender": gender_entry,
@@ -1003,7 +1081,7 @@ if (
         st.balloons()
         st.success(
             f"🎉 Laporan konsumen **{nama_konsumen}** oleh SPG"
-            f" **{nama_spg_manual.strip()}** berhasil disimpan!"
+            f" **{str(nama_spg_manual).strip()}** berhasil disimpan!"
         )
 else:
   if not is_inside_geofence:
@@ -1013,7 +1091,7 @@ else:
     )
   else:
     st.info(
-        "ℹ️ Silakan masukkan **Nama SPG** dan pilih **Warkop/LKK** terlebih"
+        "ℹ️ Silakan pilih **Nama SPG** dan pilih **Warkop/LKK** terlebih"
         " dahulu untuk membuka form."
     )
 
