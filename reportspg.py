@@ -123,6 +123,7 @@ st.markdown(
 DB_FILE = "rekap_laporan_spg.csv"
 MASTER_BRAND_FILE = "master_brand_rokok.json"
 MASTER_LOKASI_FILE = "master_lokasi_warkop.json"
+MASTER_PLAT_FILE = "master_plat_kendaraan.json"
 
 EXPECTED_COLUMNS = [
     "Waktu",
@@ -163,7 +164,7 @@ def save_database(df):
 
 
 # ====================================================
-# MANAJEMEN MASTER DATA (BRAND & LOKASI)
+# MANAJEMEN MASTER DATA (BRAND, LOKASI & PLAT KENDARAAN)
 # ====================================================
 DEFAULT_BRANDS = [
     "D.Super 12",
@@ -178,6 +179,15 @@ DEFAULT_LOKASI = [
     "Warkop Giras",
     "Warkop Madura",
     "Warkop 88",
+]
+DEFAULT_PLATS = [
+    "L 1774 BAS",
+    "L 1176 BAN",
+    "L 1046 BAN",
+    "N 1103 ABT",
+    "L 1233 BBO",
+    "B 2644 UYA",
+    "L 1728 BAY",
 ]
 
 
@@ -209,6 +219,21 @@ def load_master_lokasi():
 def save_master_lokasi(lokasi):
   with open(MASTER_LOKASI_FILE, "w", encoding="utf-8") as f:
     json.dump(lokasi, f, ensure_ascii=False, indent=2)
+
+
+def load_master_plats():
+  if os.path.exists(MASTER_PLAT_FILE):
+    try:
+      with open(MASTER_PLAT_FILE, "r", encoding="utf-8") as f:
+        return json.load(f)
+    except Exception:
+      return DEFAULT_PLATS
+  return DEFAULT_PLATS
+
+
+def save_master_plats(plats):
+  with open(MASTER_PLAT_FILE, "w", encoding="utf-8") as f:
+    json.dump(plats, f, ensure_ascii=False, indent=2)
 
 
 def tentukan_status_target(row):
@@ -282,6 +307,9 @@ if not st.session_state["logged_in"]:
         st.rerun()
       if st.button("📍 Master Lokasi Warkop", use_container_width=True):
         st.session_state["admin_view"] = "Master_Lokasi"
+        st.rerun()
+      if st.button("🚗 Master Plat Kendaraan", use_container_width=True):
+        st.session_state["admin_view"] = "Master_Plat"
         st.rerun()
       if st.button("📊 Analitik & Rekap All", use_container_width=True):
         st.session_state["admin_view"] = "Analitik"
@@ -389,7 +417,53 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
       st.rerun()
     st.stop()
 
-  # --- TAMPILAN 3: ANALITIK & REKAP ALL ---
+  # --- TAMPILAN 3: MASTER DATA PLAT KENDARAAN ---
+  elif st.session_state["admin_view"] == "Master_Plat":
+    st.markdown("## 🚗 Master Data: Plat Kendaraan Operasional")
+    st.caption(
+        "Kelola daftar plat kendaraan yang akan muncul pada pilihan login SPG."
+    )
+
+    current_plats = load_master_plats()
+
+    with st.form("form_tambah_plat"):
+      new_plat_name = st.text_input(
+          "Nomor Plat Kendaraan Baru", placeholder="Contoh: L 1234 AB"
+      )
+      btn_add_plat = st.form_submit_button("➕ Tambah Plat Kendaraan")
+      if btn_add_plat:
+        plat_clean = new_plat_name.strip().upper()
+        if plat_clean:
+          if plat_clean not in current_plats:
+            current_plats.append(plat_clean)
+            save_master_plats(current_plats)
+            st.success(f"✅ Plat kendaraan '{plat_clean}' berhasil ditambahkan!")
+            st.rerun()
+          else:
+            st.warning("Plat kendaraan tersebut sudah ada dalam daftar.")
+        else:
+          st.warning("Mohon masukkan nomor plat kendaraan.")
+
+    st.markdown("---")
+    st.markdown("#### 📋 Daftar Plat Kendaraan Terdaftar")
+    for idx, p in enumerate(current_plats):
+      col_p1, col_p2 = st.columns([0.8, 0.2])
+      with col_p1:
+        st.write(f"**{idx+1}.** `{p}`")
+      with col_p2:
+        if st.button("🗑️ Hapus", key=f"del_plat_{idx}"):
+          current_plats.pop(idx)
+          save_master_plats(current_plats)
+          st.success("Plat kendaraan berhasil dihapus!")
+          st.rerun()
+
+    st.markdown("---")
+    if st.button("⬅️ Kembali ke Dashboard"):
+      st.session_state["admin_view"] = "Dashboard"
+      st.rerun()
+    st.stop()
+
+  # --- TAMPILAN 4: ANALITIK & REKAP ALL ---
   elif st.session_state["admin_view"] == "Analitik":
     st.markdown("## 📊 Analitik & Rekapitulasi All User")
     st.caption(
@@ -423,11 +497,13 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
 
   # --- TAMPILAN UTAMA: DASHBOARD ADMIN BERGAYA KARTU ---
   st.markdown("## 📊 Dashboard Admin & Manajemen Lapangan")
-  st.caption("Pilih menu master data atau pantau rekapitulasi tim secara real-time.")
+  st.caption(
+      "Pilih menu master data atau pantau rekapitulasi tim secara real-time."
+  )
 
-  # Grid Kartu Menu Admin (Mirip Referensi Gambar)
+  # Grid Kartu Menu Admin
   st.markdown("#### 📦 Master Data")
-  col_m1, col_m2 = st.columns(2)
+  col_m1, col_m2, col_m3 = st.columns(3)
   with col_m1:
     if st.button(
         "🚬 Merek Rokok\nKelola daftar merek",
@@ -441,6 +517,13 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
         use_container_width=True,
     ):
       st.session_state["admin_view"] = "Master_Lokasi"
+      st.rerun()
+  with col_m3:
+    if st.button(
+        "🚗 Plat Kendaraan\nKelola nopol tim",
+        use_container_width=True,
+    ):
+      st.session_state["admin_view"] = "Master_Plat"
       st.rerun()
 
   st.markdown("---")
@@ -517,12 +600,118 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
     )
     st.dataframe(df_leaderboard, use_container_width=True)
 
+    st.markdown("---")
+    st.markdown("#### 📑 Log Detail Transaksi All User")
+    st.dataframe(
+        df_all_users.drop(columns=["Tanggal"], errors="ignore").sort_values(
+            by="Waktu", ascending=False
+        ),
+        use_container_width=True,
+    )
+
     # Menu Penghapusan Data Khusus Admin
-    with st.expander("⚙️ Panel Kontrol & Hapus Log (Admin)"):
-      if st.button("🗑️ Hapus Seluruh Database Laporan (All)", type="primary"):
-        save_database(pd.DataFrame(columns=EXPECTED_COLUMNS))
-        st.success("Seluruh data laporan berhasil dikosongkan!")
-        st.rerun()
+    with st.expander("⚙️ Menu Pengaturan & Hapus Log (Admin Panel)"):
+      tab_row, tab_hari, tab_minggu, tab_all = st.tabs([
+          "Hapus per Row",
+          "Hapus per Hari",
+          "Hapus per Minggu",
+          "Hapus Semua (All)",
+      ])
+
+      with tab_row:
+        options_row = []
+        for idx, row in df_all_users.iterrows():
+          label = (
+              f"[{row['Waktu']}] Team: {row['Promotor']} | SPG:"
+              f" {row['Nama_SPG']} | Konsumen: {row['Nama_Konsumen']} -"
+              f" {row['Warkop_LKK']} ({row['Brand_Rokok']})"
+          )
+          options_row.append((idx, label))
+
+        selected_row_to_delete = st.selectbox(
+            "Pilih Data Baris",
+            options=options_row,
+            format_func=lambda x: x[1],
+            key="sel_row_admin",
+        )
+
+        if st.button("🗑️ Hapus Baris Terpilih (Admin)", type="secondary"):
+          if selected_row_to_delete:
+            original_idx = selected_row_to_delete[0]
+            df_master_all = load_database()
+            df_master_all = df_master_all.drop(original_idx).reset_index(
+                drop=True
+            )
+            save_database(df_master_all)
+            st.success(
+                "✅ Berhasil menghapus baris data terpilih oleh Admin!"
+            )
+            st.rerun()
+
+      with tab_hari:
+        unique_dates = sorted(
+            df_all_users["Tanggal"].dropna().unique().tolist(), reverse=True
+        )
+        if unique_dates:
+          selected_date = st.selectbox(
+              "Pilih Tanggal", options=unique_dates, key="sel_date_admin"
+          )
+          if st.button(
+              "🗑️ Hapus Log Tanggal Ini (Admin)", type="secondary"
+          ):
+            df_master_all = load_database()
+            df_master_all["Tgl_Cek"] = pd.to_datetime(
+                df_master_all["Waktu"], errors="coerce"
+            ).dt.date
+            mask_keep = df_master_all["Tgl_Cek"] != selected_date
+            df_master_all = df_master_all[mask_keep].drop(
+                columns=["Tgl_Cek"], errors="ignore"
+            )
+            save_database(df_master_all)
+            st.success(
+                f"✅ Berhasil menghapus semua log tanggal {selected_date}!"
+            )
+            st.rerun()
+        else:
+          st.info("Tidak ada data tanggal yang tersedia.")
+
+      with tab_minggu:
+        if st.button(
+            "🗑️ Hapus Log 7 Hari Terakhir (Admin)", type="secondary"
+        ):
+          cutoff_date = datetime.now() - timedelta(days=7)
+          df_master_all = load_database()
+          df_master_all["Dt_Cek"] = pd.to_datetime(
+              df_master_all["Waktu"], errors="coerce"
+          )
+          mask_keep = df_master_all["Dt_Cek"] < cutoff_date
+          df_master_all = df_master_all[mask_keep].drop(
+              columns=["Dt_Cek"], errors="ignore"
+          )
+          save_database(df_master_all)
+          st.success("✅ Berhasil menghapus log 7 hari terakhir!")
+          st.rerun()
+
+      with tab_all:
+        st.warning(
+            "⚠️ Perhatian: Tindakan ini akan menghapus **SELURUH** riwayat"
+            " laporan dari semua Team SPG secara permanen!"
+        )
+        confirm_delete_all = st.checkbox(
+            "Saya yakin ingin menghapus seluruh data sistem",
+            key="chk_all_admin",
+        )
+        if st.button(
+            "🗑️ Hapus Semua Data Sistem (All)",
+            type="primary",
+            disabled=not confirm_delete_all,
+        ):
+          empty_df = pd.DataFrame(columns=EXPECTED_COLUMNS)
+          save_database(empty_df)
+          st.success(
+              "✅ Seluruh database laporan berhasil dikosongkan oleh Admin!"
+          )
+          st.rerun()
   else:
     st.info("Belum ada data laporan masuk.")
 
@@ -559,9 +748,15 @@ if not st.session_state["logged_in"]:
             "🏙️ Wilayah Operasional", ["Surabaya", "Gresik"]
         )
       with col_k2:
-        plat_input = st.text_input(
-            "🚗 Plat Kendaraan", placeholder="Contoh: L 1234 AB"
-        )
+        daftar_plat_tersedia = load_master_plats()
+        if daftar_plat_tersedia:
+          plat_input = st.selectbox(
+              "🚗 Plat Kendaraan", options=daftar_plat_tersedia
+          )
+        else:
+          plat_input = st.text_input(
+              "🚗 Plat Kendaraan", placeholder="Contoh: L 1234 AB"
+          )
 
       password_input = st.text_input(
           "🔑 Kata Sandi (Password)",
@@ -576,13 +771,13 @@ if not st.session_state["logged_in"]:
         expected_password = f"spg{spg_num}"
 
         if password_input == expected_password or password_input == "spg123":
-          if not plat_input.strip():
-            st.warning("⚠️ Mohon isi plat nomor kendaraan terlebih dahulu.")
+          if not plat_input or not str(plat_input).strip():
+            st.warning("⚠️ Mohon pilih plat nomor kendaraan terlebih dahulu.")
           else:
             st.session_state["logged_in"] = True
             st.session_state["user_spg"] = pilihan_user
             st.session_state["kota_kab"] = pilihan_kota
-            st.session_state["plat_kendaraan"] = plat_input.strip().upper()
+            st.session_state["plat_kendaraan"] = str(plat_input).strip().upper()
             st.rerun()
         else:
           st.error(
