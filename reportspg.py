@@ -259,7 +259,6 @@ def save_master_team_brands(team_brands):
 
 
 def load_master_plat_kendaraan():
-  # Master Plat tidak dikunci per team, berupa list fleksibel (tambah/hapus bebas oleh admin)
   if os.path.exists(MASTER_PLAT_FILE):
     try:
       with open(MASTER_PLAT_FILE, "r", encoding="utf-8") as f:
@@ -1650,7 +1649,7 @@ if (
         "### 📝 Form Input Laporan Konsumen &nbsp; `💾 Dilengkapi Auto-Draft`"
     )
     st.write(
-        f"**Team Login:** {st.session_state['user_spg']} | **Plat Mobil:** {st.session_state['plat_mobil']} | **Nama SPG:**"
+        f"**Team Login:** {st.session_state['user_spg']} | **Nama SPG:**"
         f" {str(nama_spg_manual).strip()} | **Warkop/LKK:**"
         f" {str(nama_warkop_manual).strip()}"
     )
@@ -1828,8 +1827,11 @@ if not df_user_rekap.empty:
 
   st.markdown("---")
   st.markdown("#### 📑 Log Detail Transaksi & Pengaturan")
+  
+  # Kolom Plat_Mobil dihapus dari tampilan log detail transaksi SPG
+  cols_to_drop_spg = ["Tanggal", "Plat_Mobil"] if "Plat_Mobil" in df_user_rekap.columns else ["Tanggal"]
   st.dataframe(
-      df_user_rekap.drop(columns=["Tanggal"], errors="ignore"),
+      df_user_rekap.drop(columns=cols_to_drop_spg, errors="ignore"),
       use_container_width=True,
   )
 
