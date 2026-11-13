@@ -172,6 +172,40 @@ EXPECTED_SUPERVISI_COLUMNS = [
 ]
 
 
+# ====================================================
+# FUNGSI BANTUAN MINGGU (SABTU s/d JUMAT)
+# ====================================================
+def get_custom_week_info(dt):
+  """Menghitung nomor minggu dan rentang tanggal (Sabtu s/d Jumat)."""
+  if pd.isna(dt):
+    return "-", "-"
+  d = pd.to_datetime(dt).date()
+  # Geser 2 hari ke depan agar hari Sabtu & Minggu masuk ke minggu berikutnya
+  d_shifted = d + timedelta(days=2)
+  iso_y, iso_w, _ = d_shifted.isocalendar()
+
+  shift_weekday = d_shifted.isoweekday()  # 1=Mon ... 7=Sun
+  sat_date = d_shifted - timedelta(days=shift_weekday)
+  fri_date = sat_date + timedelta(days=6)
+
+  periode_label = f"Minggu ke-{iso_w} ({sat_date.strftime('%d-%m-%Y')} s/d {fri_date.strftime('%d-%m-%Y')})"
+  return periode_label, iso_w
+
+
+def add_custom_week_columns(df, date_col="Waktu_Dt"):
+  """Menambahkan kolom Periode_Minggu ke DataFrame."""
+  if df.empty or date_col not in df.columns:
+    df["Periode_Minggu"] = "-"
+    return df
+
+  periods = []
+  for val in df[date_col]:
+    p_label, _ = get_custom_week_info(val)
+    periods.append(p_label)
+  df["Periode_Minggu"] = periods
+  return df
+
+
 def load_database():
   if os.path.exists(DB_FILE):
     try:
@@ -851,7 +885,6 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
       df_peta_all["Waktu_Dt"] = pd.to_datetime(
           df_peta_all["Waktu"], errors="coerce"
       )
-      df_peta_all["Tanggal_Obj"] = df_peta_all["Waktu_Dt"].dt.date
       df_peta_all["Tanggal"] = df_peta_all["Waktu_Dt"].dt.strftime("%d-%m-%Y")
       df_peta_all = df_peta_all.dropna(subset=["Latitude", "Longitude"])
 
@@ -1021,8 +1054,8 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
     df_all_users["Waktu_Dt"] = pd.to_datetime(
         df_all_users["Waktu"], errors="coerce"
     )
-    df_all_users["Tanggal_Obj"] = df_all_users["Waktu_Dt"].dt.date
     df_all_users["Tanggal"] = df_all_users["Waktu_Dt"].dt.strftime("%d-%m-%Y")
+    df_all_users = add_custom_week_columns(df_all_users, "Waktu_Dt")
     df_all_users["Jumlah_Bungkus"] = pd.to_numeric(
         df_all_users["Jumlah_Bungkus"], errors="coerce"
     ).fillna(0)
@@ -1080,7 +1113,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
 
     if not df_lb_filtered.empty:
       df_team_leaderboard = (
-          df_lb_filtered.groupby(["Tanggal", "Promotor", "Kota_Kab", "Brand_Rokok"])
+          df_lb_filtered.groupby(["Periode_Minggu", "Tanggal", "Promotor", "Kota_Kab", "Brand_Rokok"])
           .agg(
               Total_Omset_Team=("Jumlah_Bungkus", "sum"),
               Total_Konsumen_Beli=("Nama_Konsumen", "count"),
@@ -1097,7 +1130,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
       df_team_leaderboard["Brand_Rokok_Clean"] = df_team_leaderboard["Brand_Rokok"].apply(clean_brand_team)
 
       df_team_leaderboard = (
-          df_team_leaderboard.groupby(["Tanggal", "Promotor", "Kota_Kab", "Brand_Rokok_Clean"])
+          df_team_leaderboard.groupby(["Periode_Minggu", "Tanggal", "Promotor", "Kota_Kab", "Brand_Rokok_Clean"])
           .agg(
               Total_Omset_Team=("Total_Omset_Team", "sum"),
               Total_Konsumen_Beli=("Total_Konsumen_Beli", "sum"),
@@ -1117,6 +1150,10 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
           lambda r: "Achieved" if r["Total_Omset_Team"] >= r["Target_Team"] else "Not Achieved",
           axis=1,
       )
+
+      # Susun urutan kolom (Periode_Minggu tepat di sebelah Tanggal)
+      cols_lb_order = ["Tanggal", "Periode_Minggu", "Promotor", "Kota_Kab", "Brand_Rokok", "Total_Omset_Team", "Total_Konsumen_Beli", "Target_Team", "Status_Target_Team"]
+      df_team_leaderboard = df_team_leaderboard[[c for c in cols_lb_order if c in df_team_leaderboard.columns]]
 
       st.dataframe(
           df_team_leaderboard.style.map(
@@ -1151,11 +1188,11 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
 
     if not df_rk_filtered.empty:
       df_rokok_summary = (
-          df_rk_filtered.groupby(["Tanggal", "Promotor", "Nama_SPG", "Brand_Rokok"])
+          df_rk_filtered.groupby(["Tanggal", "Periode_Minggu", "Promotor", "Nama_SPG", "Brand_Rokok"])
           .agg(Jumlah_Bungkus=("Jumlah_Bungkus", "sum"))
           .reset_index()
           .pivot_table(
-              index=["Tanggal", "Promotor", "Nama_SPG"],
+              index=["Tanggal", "Periode_Minggu", "Promotor", "Nama_SPG"],
               columns="Brand_Rokok",
               values="Jumlah_Bungkus",
               fill_value=0
@@ -1177,8 +1214,8 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
     df_all_supervisi["Waktu_Dt"] = pd.to_datetime(
         df_all_supervisi["Waktu"], errors="coerce"
     )
-    df_all_supervisi["Tanggal_Obj"] = df_all_supervisi["Waktu_Dt"].dt.date
     df_all_supervisi["Tanggal"] = df_all_supervisi["Waktu_Dt"].dt.strftime("%d-%m-%Y")
+    df_all_supervisi = add_custom_week_columns(df_all_supervisi, "Waktu_Dt")
     df_all_supervisi["Jumlah_Kontak_Manual"] = pd.to_numeric(
         df_all_supervisi["Jumlah_Kontak_Manual"], errors="coerce"
     ).fillna(0).astype(int)
@@ -1222,11 +1259,11 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
     df_sup_lkk_filtered = df_sup_lkk_filtered[df_sup_lkk_filtered["Promotor"].isin(filter_lkk_team)]
 
   df_rekap_spg_admin = pd.DataFrame(
-      columns=["Tanggal", "Promotor", "Kota_Kab", "Kecamatan", "Warkop_LKK", "Alamat_Warkop", "SPG_Bertugas", "Konsumen_Beli", "Total_Omset_Bungkus"]
+      columns=["Tanggal", "Periode_Minggu", "Promotor", "Kota_Kab", "Kecamatan", "Warkop_LKK", "Alamat_Warkop", "SPG_Bertugas", "Konsumen_Beli", "Total_Omset_Bungkus"]
   )
   if not df_spg_lkk_filtered.empty:
     df_rekap_spg_admin = (
-        df_spg_lkk_filtered.groupby(["Tanggal", "Promotor", "Kota_Kab", "Kecamatan", "Warkop_LKK", "Alamat_Warkop"])
+        df_spg_lkk_filtered.groupby(["Tanggal", "Periode_Minggu", "Promotor", "Kota_Kab", "Kecamatan", "Warkop_LKK", "Alamat_Warkop"])
         .agg(
             SPG_Bertugas=("Nama_SPG", lambda x: ", ".join(x.dropna().unique())),
             Konsumen_Beli=("Nama_Konsumen", "count"),
@@ -1236,11 +1273,11 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
     )
 
   df_rekap_sup_admin = pd.DataFrame(
-      columns=["Tanggal", "Promotor", "Kota_Kab", "Kecamatan", "Warkop_LKK", "Plat_Mobil_Supervisi", "Jumlah_Kontak_Manual"]
+      columns=["Tanggal", "Periode_Minggu", "Promotor", "Kota_Kab", "Kecamatan", "Warkop_LKK", "Plat_Mobil_Supervisi", "Jumlah_Kontak_Manual"]
   )
   if not df_sup_lkk_filtered.empty:
     df_rekap_sup_admin = (
-        df_sup_lkk_filtered.groupby(["Tanggal", "Promotor", "Kota_Kab", "Kecamatan", "Warkop_LKK"])
+        df_sup_lkk_filtered.groupby(["Tanggal", "Periode_Minggu", "Promotor", "Kota_Kab", "Kecamatan", "Warkop_LKK"])
         .agg(
             Plat_Mobil_Supervisi=("Plat_Mobil", lambda x: ", ".join([str(v) for v in x.dropna().unique() if str(v) != "-"])),
             Jumlah_Kontak_Manual=("Jumlah_Kontak_Manual", "sum")
@@ -1263,7 +1300,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
       df_combine_admin = pd.merge(
           df_rekap_spg_admin,
           df_rekap_sup_admin,
-          on=["Tanggal", "Promotor", "Kota_Kab", "Kecamatan", "Warkop_LKK"],
+          on=["Tanggal", "Periode_Minggu", "Promotor", "Kota_Kab", "Kecamatan", "Warkop_LKK"],
           how="outer"
       ).fillna({
           "Alamat_Warkop": "-",
@@ -1281,6 +1318,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
 
     cols_combine_order = [
         "Tanggal",
+        "Periode_Minggu",
         "Promotor",
         "Plat_Mobil_Supervisi",
         "Kota_Kab",
@@ -1292,7 +1330,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
         "Konsumen_Beli",
         "Total_Omset_Bungkus",
     ]
-    df_combine_admin = df_combine_admin[cols_combine_order].sort_values(
+    df_combine_admin = df_combine_admin[[c for c in cols_combine_order if c in df_combine_admin.columns]].sort_values(
         by=["Tanggal", "Total_Omset_Bungkus", "Jumlah_Kontak_Manual"], ascending=[False, False, False]
     )
 
@@ -1303,7 +1341,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
     with pd.ExcelWriter(output_lkk, engine="openpyxl") as writer:
       df_combine_admin.to_excel(writer, index=False, sheet_name="Rekap Combine LKK")
       if not df_all_supervisi.empty:
-        df_all_supervisi.drop(columns=["Waktu_Dt", "Tanggal_Obj", "Tanggal"], errors="ignore").to_excel(
+        df_all_supervisi.drop(columns=["Waktu_Dt"], errors="ignore").to_excel(
             writer, index=False, sheet_name="Log Kontak Supervisi"
         )
 
@@ -1348,7 +1386,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
                 for item in selected_sup_rows
             ]
             df_sup_clean = df_all_supervisi.drop(index=indices_sup_drop).drop(
-                columns=["Waktu_Dt", "Tanggal_Obj", "Tanggal"], errors="ignore"
+                columns=["Waktu_Dt"], errors="ignore"
             )
             save_supervisi_database(df_sup_clean)
             st.success(f"✅ Berhasil menghapus {len(indices_sup_drop)} baris data kontak Supervisi!")
@@ -1370,7 +1408,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
           st.info(f"Terdapat **{jml_sup_hari} entri kontak Supervisi** pada tanggal **{tgl_sup_hapus}**.")
           if st.button(f"🗑️ Hapus Data Kontak Tanggal {tgl_sup_hapus}", type="primary", key="btn_del_sup_day"):
             df_sup_clean = df_all_supervisi[df_all_supervisi["Tanggal"] != tgl_sup_hapus].drop(
-                columns=["Waktu_Dt", "Tanggal_Obj", "Tanggal"], errors="ignore"
+                columns=["Waktu_Dt"], errors="ignore"
             )
             save_supervisi_database(df_sup_clean)
             st.success(f"✅ Seluruh data kontak Supervisi ({jml_sup_hari} baris) pada tanggal {tgl_sup_hapus} berhasil dihapus!")
@@ -1379,43 +1417,26 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
           st.info("Tidak ada data tanggal valid untuk dihapus.")
 
       with tab_sup_week:
-        df_sup_valid_dt = df_all_supervisi.dropna(subset=["Waktu_Dt"]).copy()
-        if not df_sup_valid_dt.empty:
-          iso_sup_cal = df_sup_valid_dt["Waktu_Dt"].dt.isocalendar()
-          df_sup_valid_dt["Year_Week"] = (
-              iso_sup_cal["year"].astype(str)
-              + "-W"
-              + iso_sup_cal["week"].astype(str).str.zfill(2)
-          )
-          sup_week_options = {}
-          for yw, group in df_sup_valid_dt.groupby("Year_Week"):
-            min_d = group["Tanggal"].min()
-            max_d = group["Tanggal"].max()
-            label = f"{yw} ({min_d} s/d {max_d}) — {len(group)} entri kontak"
-            sup_week_options[label] = yw
-
-          sorted_sup_week_labels = sorted(sup_week_options.keys(), reverse=True)
+        daftar_minggu_sup = sorted(
+            df_all_supervisi["Periode_Minggu"].dropna().unique().tolist(), reverse=True
+        )
+        if daftar_minggu_sup:
           pilih_sup_minggu_label = st.selectbox(
-              "Pilih Minggu Log Kontak Supervisi yang akan dihapus:",
-              options=sorted_sup_week_labels,
+              "Pilih Periode Minggu Log Kontak Supervisi yang akan dihapus (Sabtu s/d Jumat):",
+              options=daftar_minggu_sup,
               key="sb_del_sup_week"
           )
+          jml_sup_minggu = len(df_all_supervisi[df_all_supervisi["Periode_Minggu"] == pilih_sup_minggu_label])
+          st.info(f"Terdapat **{jml_sup_minggu} entri kontak** pada periode minggu `{pilih_sup_minggu_label}`.")
           if st.button("🗑️ Hapus Data Kontak Minggu Terpilih", type="primary", key="btn_del_sup_week"):
-            target_sup_yw = sup_week_options[pilih_sup_minggu_label]
-            iso_sup_all = df_all_supervisi["Waktu_Dt"].dt.isocalendar()
-            yw_sup_series = (
-                iso_sup_all["year"].astype(str)
-                + "-W"
-                + iso_sup_all["week"].astype(str).str.zfill(2)
-            )
-            df_sup_clean = df_all_supervisi[yw_sup_series != target_sup_yw].drop(
-                columns=["Waktu_Dt", "Tanggal_Obj", "Tanggal"], errors="ignore"
+            df_sup_clean = df_all_supervisi[df_all_supervisi["Periode_Minggu"] != pilih_sup_minggu_label].drop(
+                columns=["Waktu_Dt"], errors="ignore"
             )
             save_supervisi_database(df_sup_clean)
-            st.success(f"✅ Data kontak Supervisi pada minggu {target_sup_yw} berhasil dihapus!")
+            st.success(f"✅ Data kontak Supervisi pada periode minggu {pilih_sup_minggu_label} berhasil dihapus!")
             st.rerun()
         else:
-          st.info("Tidak ada data waktu valid untuk pengelompokan mingguan.")
+          st.info("Tidak ada data minggu valid untuk pengelompokan mingguan.")
 
       with tab_sup_all:
         st.error(
@@ -1436,7 +1457,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
 
       st.markdown("##### 📋 Preview Log Input Kontak Manual Supervisi")
       st.dataframe(
-          df_all_supervisi.drop(columns=["Waktu_Dt", "Tanggal_Obj", "Tanggal"], errors="ignore").sort_values(
+          df_all_supervisi.drop(columns=["Waktu_Dt"], errors="ignore").sort_values(
               by="Waktu", ascending=False
           ),
           use_container_width=True,
@@ -1478,7 +1499,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
                 for item in selected_rows
             ]
             df_clean = df_all_users.drop(index=indices_to_drop).drop(
-                columns=["Waktu_Dt", "Tanggal_Obj", "Tanggal"], errors="ignore"
+                columns=["Waktu_Dt"], errors="ignore"
             )
             save_database(df_clean)
             st.success(f"✅ Berhasil menghapus {len(indices_to_drop)} baris transaksi!")
@@ -1500,7 +1521,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
           st.info(f"Terdapat **{jml_data_hari} transaksi** pada tanggal **{tgl_hapus}**.")
           if st.button(f"🗑️ Hapus Semua Data Tanggal {tgl_hapus}", type="primary", key="btn_del_day"):
             df_clean = df_all_users[df_all_users["Tanggal"] != tgl_hapus].drop(
-                columns=["Waktu_Dt", "Tanggal_Obj", "Tanggal"], errors="ignore"
+                columns=["Waktu_Dt"], errors="ignore"
             )
             save_database(df_clean)
             st.success(f"✅ Seluruh data ({jml_data_hari} baris) pada tanggal {tgl_hapus} berhasil dihapus!")
@@ -1509,43 +1530,26 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
           st.info("Tidak ada data tanggal valid untuk dihapus.")
 
       with tab_del_week:
-        df_valid_dt = df_all_users.dropna(subset=["Waktu_Dt"]).copy()
-        if not df_valid_dt.empty:
-          iso_cal = df_valid_dt["Waktu_Dt"].dt.isocalendar()
-          df_valid_dt["Year_Week"] = (
-              iso_cal["year"].astype(str)
-              + "-W"
-              + iso_cal["week"].astype(str).str.zfill(2)
-          )
-          week_options = {}
-          for yw, group in df_valid_dt.groupby("Year_Week"):
-            min_d = group["Tanggal"].min()
-            max_d = group["Tanggal"].max()
-            label = f"{yw} ({min_d} s/d {max_d}) — {len(group)} transaksi"
-            week_options[label] = yw
-
-          sorted_week_labels = sorted(week_options.keys(), reverse=True)
+        daftar_minggu_spg = sorted(
+            df_all_users["Periode_Minggu"].dropna().unique().tolist(), reverse=True
+        )
+        if daftar_minggu_spg:
           pilih_minggu_label = st.selectbox(
-              "Pilih Minggu Transaksi yang akan dihapus:",
-              options=sorted_week_labels,
+              "Pilih Periode Minggu Transaksi yang akan dihapus (Sabtu s/d Jumat):",
+              options=daftar_minggu_spg,
               key="sb_del_week"
           )
+          jml_trans_minggu = len(df_all_users[df_all_users["Periode_Minggu"] == pilih_minggu_label])
+          st.info(f"Terdapat **{jml_trans_minggu} transaksi** pada periode minggu `{pilih_minggu_label}`.")
           if st.button("🗑️ Hapus Semua Data Minggu Terpilih", type="primary", key="btn_del_week"):
-            target_yw = week_options[pilih_minggu_label]
-            iso_all = df_all_users["Waktu_Dt"].dt.isocalendar()
-            yw_series = (
-                iso_all["year"].astype(str)
-                + "-W"
-                + iso_all["week"].astype(str).str.zfill(2)
-            )
-            df_clean = df_all_users[yw_series != target_yw].drop(
-                columns=["Waktu_Dt", "Tanggal_Obj", "Tanggal"], errors="ignore"
+            df_clean = df_all_users[df_all_users["Periode_Minggu"] != pilih_minggu_label].drop(
+                columns=["Waktu_Dt"], errors="ignore"
             )
             save_database(df_clean)
-            st.success(f"✅ Data pada minggu {target_yw} berhasil dihapus!")
+            st.success(f"✅ Data pada periode minggu {pilih_minggu_label} berhasil dihapus!")
             st.rerun()
         else:
-          st.info("Tidak ada data waktu valid untuk pengelompokan mingguan.")
+          st.info("Tidak ada data minggu valid untuk pengelompokan mingguan.")
 
       with tab_del_all:
         st.error(
@@ -1565,7 +1569,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
             st.warning("Centang kotak konfirmasi terlebih dahulu sebelum menghapus seluruh data.")
 
     st.dataframe(
-        df_all_users.drop(columns=["Waktu_Dt", "Tanggal_Obj", "Tanggal"], errors="ignore").sort_values(
+        df_all_users.drop(columns=["Waktu_Dt"], errors="ignore").sort_values(
             by="Waktu", ascending=False
         ),
         use_container_width=True,
@@ -2182,14 +2186,14 @@ if not df_user_rekap.empty:
   df_user_rekap["Waktu_Dt"] = pd.to_datetime(
       df_user_rekap["Waktu"], errors="coerce"
   )
-  df_user_rekap["Tanggal_Obj"] = df_user_rekap["Waktu_Dt"].dt.date
   df_user_rekap["Tanggal"] = df_user_rekap["Waktu_Dt"].dt.strftime("%d-%m-%Y")
+  df_user_rekap = add_custom_week_columns(df_user_rekap, "Waktu_Dt")
   df_user_rekap["Nama_SPG"] = df_user_rekap["Nama_SPG"].fillna("-")
 
   st.markdown("#### 📋 Tabel Evaluasi Harian Per SPG (Berdasarkan Target SPG)")
   
   df_eval_spg = (
-      df_user_rekap.groupby(["Tanggal", "Nama_SPG", "Brand_Rokok"])
+      df_user_rekap.groupby(["Tanggal", "Periode_Minggu", "Nama_SPG", "Brand_Rokok"])
       .agg(
           Jumlah_Titik_Warkop=("Warkop_LKK", lambda x: x.nunique()),
           Konsumen_Beli=("Nama_Konsumen", "count"),
@@ -2207,7 +2211,7 @@ if not df_user_rekap.empty:
   df_eval_spg["Brand_Rokok_Clean"] = df_eval_spg["Brand_Rokok"].apply(clean_brand_spg)
 
   df_eval_spg = (
-      df_eval_spg.groupby(["Tanggal", "Nama_SPG", "Brand_Rokok_Clean"])
+      df_eval_spg.groupby(["Tanggal", "Periode_Minggu", "Nama_SPG", "Brand_Rokok_Clean"])
       .agg(
           Jumlah_Titik_Warkop=("Jumlah_Titik_Warkop", "max"),
           Konsumen_Beli=("Konsumen_Beli", "sum"),
@@ -2229,6 +2233,10 @@ if not df_user_rekap.empty:
       axis=1,
   )
 
+  # Susun urutan kolom (Periode_Minggu tepat di sebelah Tanggal)
+  cols_eval_order = ["Tanggal", "Periode_Minggu", "Nama_SPG", "Brand_Rokok", "Jumlah_Titik_Warkop", "Konsumen_Beli", "Jumlah_Omset_SPG", "Target_SPG", "Status_Target_SPG"]
+  df_eval_spg = df_eval_spg[[c for c in cols_eval_order if c in df_eval_spg.columns]]
+
   st.dataframe(
       df_eval_spg.style.map(
           style_status_target, subset=["Status_Target_SPG"]
@@ -2239,7 +2247,7 @@ if not df_user_rekap.empty:
   st.markdown("---")
   st.markdown("#### 📑 Log Detail Transaksi & Pengaturan")
   
-  cols_to_drop_spg = ["Tanggal_Obj", "Plat_Mobil", "Waktu_Dt"] if "Plat_Mobil" in df_user_rekap.columns else ["Tanggal_Obj", "Waktu_Dt"]
+  cols_to_drop_spg = ["Plat_Mobil", "Waktu_Dt"] if "Plat_Mobil" in df_user_rekap.columns else ["Waktu_Dt"]
   st.dataframe(
       df_user_rekap.drop(columns=cols_to_drop_spg, errors="ignore"),
       use_container_width=True,
@@ -2250,7 +2258,7 @@ if not df_user_rekap.empty:
     df_eval_spg.to_excel(
         writer, index=False, sheet_name="Evaluasi Harian SPG"
     )
-    df_user_rekap.drop(columns=["Tanggal_Obj", "Waktu_Dt"], errors="ignore").to_excel(
+    df_user_rekap.drop(columns=["Waktu_Dt"], errors="ignore").to_excel(
         writer, index=False, sheet_name="Detail Transaksi"
     )
 
