@@ -1,3 +1,8 @@
+Berikut adalah pembaruan kode `reportspg.py`. Menu pengelolaan / penghapusan data (hapus per *row*, harian, mingguan, dan *all data*) telah dipindahkan secara khusus ke dalam **Dashboard Report Rekap All User** di *sidebar* (hanya dapat diakses setelah memasukkan password admin `admin123`).
+
+Dengan demikian, menu utama SPG tetap bersih, sedangkan Supervisor/Admin memiliki kontrol penuh untuk memonitor sekaligus membersihkan data log jika diperlukan.
+
+```python
 from datetime import datetime, timedelta
 from io import BytesIO
 import json
@@ -194,7 +199,7 @@ if "admin_logged_in" not in st.session_state:
   st.session_state["admin_logged_in"] = False
 
 # ====================================================
-# SIDEBAR: MENU REKAP ALL USER (Hanya aktif saat di menu login)
+# SIDEBAR: MENU REKAP ALL USER & ADMIN CONTROLS
 # ====================================================
 if not st.session_state["logged_in"]:
   with st.sidebar:
@@ -224,15 +229,15 @@ if not st.session_state["logged_in"]:
         st.rerun()
 
 # ====================================================
-# JIKA ADMIN MASUK DARI SIDEBAR DI HALAMAN LOGIN
+# TAMPILAN JIKA ADMIN MASUK DARI SIDEBAR (ALL USER)
 # ====================================================
 if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
   st.markdown(
       "## 🌐 Dashboard Report Rekap All User (Mode Supervisor/Admin)"
   )
   st.info(
-      "Anda sedang melihat rekapitulasi data seluruh Team SPG (1 - 20) tanpa"
-      " harus login ke akun SPG."
+      "Anda sedang melihat rekapitulasi data seluruh Team SPG (1 - 20) secara"
+      " terpusat."
   )
 
   if st.button("⬅️ Kembali ke Menu Utama Login"):
@@ -252,7 +257,6 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
         df_all_users["Jumlah_Bungkus"], errors="coerce"
     ).fillna(0)
 
-    # Filter Data All User
     with st.expander("🔍 Filter Data Rekap All User", expanded=True):
       col_f1, col_f2, col_f3 = st.columns(3)
       with col_f1:
@@ -279,7 +283,6 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
     if filter_brand != "Semua Brand":
       df_filtered = df_filtered[df_filtered["Brand_Rokok"] == filter_brand]
 
-    # KPI Ringkasan
     total_omset = int(df_filtered["Jumlah_Bungkus"].sum())
     total_konsumen = len(df_filtered)
     total_warkop = df_filtered["Warkop_LKK"].nunique()
@@ -362,7 +365,112 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
           use_container_width=True,
       )
 
-      # Download Excel Gabungan
+      # ==========================================
+      # MENU PENGATURAN / HAPUS LOG (DIPINDAHKAN KE ADMIN)
+      # ==========================================
+      with st.expander("⚙️ Menu Pengaturan & Hapus Log (Admin Panel)"):
+        tab_row, tab_hari, tab_minggu, tab_all = st.tabs([
+            "Hapus per Row",
+            "Hapus per Hari",
+            "Hapus per Minggu",
+            "Hapus Semua (All)",
+        ])
+
+        with tab_row:
+          options_row = []
+          for idx, row in df_filtered.iterrows():
+            label = (
+                f"[{row['Waktu']}] Team: {row['Promotor']} | SPG:"
+                f" {row['Nama_SPG']} | Konsumen: {row['Nama_Konsumen']} -"
+                f" {row['Warkop_LKK']} ({row['Brand_Rokok']})"
+            )
+            options_row.append((idx, label))
+
+          selected_row_to_delete = st.selectbox(
+              "Pilih Data Baris",
+              options=options_row,
+              format_func=lambda x: x[1],
+              key="sel_row_admin",
+          )
+
+          if st.button("🗑️ Hapus Baris Terpilih (Admin)", type="secondary"):
+            if selected_row_to_delete:
+              original_idx = selected_row_to_delete[0]
+              df_master_all = load_database()
+              df_master_all = df_master_all.drop(original_idx).reset_index(
+                  drop=True
+              )
+              save_database(df_master_all)
+              st.success(
+                  "✅ Berhasil menghapus baris data terpilih oleh Admin!"
+              )
+              st.rerun()
+
+        with tab_hari:
+          unique_dates = sorted(
+              df_filtered["Tanggal"].dropna().unique().tolist(), reverse=True
+          )
+          if unique_dates:
+            selected_date = st.selectbox(
+                "Pilih Tanggal", options=unique_dates, key="sel_date_admin"
+            )
+            if st.button(
+                "🗑️ Hapus Log Tanggal Ini (Admin)", type="secondary"
+            ):
+              df_master_all = load_database()
+              df_master_all["Tgl_Cek"] = pd.to_datetime(
+                  df_master_all["Waktu"], errors="coerce"
+              ).dt.date
+              mask_keep = df_master_all["Tgl_Cek"] != selected_date
+              df_master_all = df_master_all[mask_keep].drop(
+                  columns=["Tgl_Cek"], errors="ignore"
+              )
+              save_database(df_master_all)
+              st.success(
+                  f"✅ Berhasil menghapus semua log tanggal {selected_date}!"
+              )
+              st.rerun()
+          else:
+            st.info("Tidak ada data tanggal yang tersedia.")
+
+        with tab_minggu:
+          if st.button(
+              "🗑️ Hapus Log 7 Hari Terakhir (Admin)", type="secondary"
+          ):
+            cutoff_date = datetime.now() - timedelta(days=7)
+            df_master_all = load_database()
+            df_master_all["Dt_Cek"] = pd.to_datetime(
+                df_master_all["Waktu"], errors="coerce"
+            )
+            mask_keep = df_master_all["Dt_Cek"] < cutoff_date
+            df_master_all = df_master_all[mask_keep].drop(
+                columns=["Dt_Cek"], errors="ignore"
+            )
+            save_database(df_master_all)
+            st.success("✅ Berhasil menghapus log 7 hari terakhir!")
+            st.rerun()
+
+        with tab_all:
+          st.warning(
+              "⚠️ Perhatian: Tindakan ini akan menghapus **SELURUH** riwayat"
+              " laporan dari semua Team SPG secara permanen!"
+          )
+          confirm_delete_all = st.checkbox(
+              "Saya yakin ingin menghapus seluruh data sistem",
+              key="chk_all_admin",
+          )
+          if st.button(
+              "🗑️ Hapus Semua Data Sistem (All)",
+              type="primary",
+              disabled=not confirm_delete_all,
+          ):
+            empty_df = pd.DataFrame(columns=EXPECTED_COLUMNS)
+            save_database(empty_df)
+            st.success(
+                "✅ Seluruh database laporan berhasil dikosongkan oleh Admin!"
+            )
+            st.rerun()
+
       output_all = BytesIO()
       with pd.ExcelWriter(output_all, engine="openpyxl") as writer:
         df_leaderboard.to_excel(
@@ -804,3 +912,5 @@ else:
   st.info(
       f"Belum ada data laporan tersimpan untuk {st.session_state['user_spg']}."
   )
+
+```
