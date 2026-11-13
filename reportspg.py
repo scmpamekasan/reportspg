@@ -124,7 +124,7 @@ DB_FILE = "rekap_laporan_spg.csv"
 
 EXPECTED_COLUMNS = [
     "Waktu",
-    "Promotor",
+    "Nama_Team",
     "Nama_SPG",
     "Kota_Kab",
     "Plat_Kendaraan",
@@ -281,7 +281,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
     total_omset = int(df_filtered["Jumlah_Bungkus"].sum())
     total_konsumen = len(df_filtered)
     total_warkop = df_filtered["Warkop_LKK"].nunique()
-    total_team_aktif = df_filtered["Promotor"].nunique()
+    total_team_aktif = df_filtered["Nama_Team"].nunique()
 
     k1, k2, k3, k4 = st.columns(4)
     with k1:
@@ -315,7 +315,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
     if not df_filtered.empty:
       df_eval_all = (
           df_filtered.groupby(
-              ["Tanggal", "Kota_Kab", "Promotor", "Brand_Rokok"]
+              ["Tanggal", "Kota_Kab", "Nama_Team", "Brand_Rokok"]
           )
           .agg(
               Jumlah_Titik_Warkop=("Warkop_LKK", lambda x: x.nunique()),
@@ -339,7 +339,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
 
       st.markdown("#### 📊 Leaderboard Total Omset Per Team SPG")
       df_leaderboard = (
-          df_filtered.groupby(["Promotor", "Kota_Kab"])
+          df_filtered.groupby(["Nama_Team", "Kota_Kab"])
           .agg(
               Total_Hari_Aktif=("Tanggal", lambda x: x.nunique()),
               Total_Warkop=("Warkop_LKK", lambda x: x.nunique()),
@@ -375,7 +375,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
           options_row = []
           for idx, row in df_filtered.iterrows():
             label = (
-                f"[{row['Waktu']}] Team: {row['Promotor']} | SPG:"
+                f"[{row['Waktu']}] Team: {row['Nama_Team']} | SPG:"
                 f" {row['Nama_SPG']} | Konsumen: {row['Nama_Konsumen']} -"
                 f" {row['Warkop_LKK']} ({row['Brand_Rokok']})"
             )
@@ -748,7 +748,7 @@ if (
         )
         data_baru = {
             "Waktu": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "Promotor": st.session_state["user_spg"],
+            "Nama_Team": st.session_state["user_spg"],
             "Nama_SPG": nama_spg_manual.strip(),
             "Kota_Kab": st.session_state["kota_kab"],
             "Plat_Kendaraan": st.session_state["plat_kendaraan"],
@@ -793,9 +793,9 @@ st.markdown(
 )
 
 df_master_all = load_database()
-if not df_master_all.empty and "Promotor" in df_master_all.columns:
+if not df_master_all.empty and "Nama_Team" in df_master_all.columns:
   df_user_rekap = df_master_all[
-      df_master_all["Promotor"] == st.session_state["user_spg"]
+      df_master_all["Nama_Team"] == st.session_state["user_spg"]
   ].copy()
 else:
   df_user_rekap = pd.DataFrame()
@@ -808,7 +808,7 @@ if not df_user_rekap.empty:
 
   st.markdown("#### 📋 Tabel Evaluasi Harian Per Team SPG")
   df_eval = (
-      df_user_rekap.groupby(["Tanggal", "Promotor", "Brand_Rokok"])
+      df_user_rekap.groupby(["Tanggal", "Nama_Team", "Brand_Rokok"])
       .agg(
           Jumlah_Titik_Warkop=("Warkop_LKK", lambda x: x.nunique()),
           Konsumen_Beli=("Nama_Konsumen", "count"),
