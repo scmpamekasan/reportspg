@@ -1,8 +1,3 @@
-Berikut adalah pembaruan kode `reportspg.py`. Menu pengelolaan / penghapusan data (hapus per *row*, harian, mingguan, dan *all data*) telah dipindahkan secara khusus ke dalam **Dashboard Report Rekap All User** di *sidebar* (hanya dapat diakses setelah memasukkan password admin `admin123`).
-
-Dengan demikian, menu utama SPG tetap bersih, sedangkan Supervisor/Admin memiliki kontrol penuh untuk memonitor sekaligus membersihkan data log jika diperlukan.
-
-```python
 from datetime import datetime, timedelta
 from io import BytesIO
 import json
@@ -366,7 +361,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
       )
 
       # ==========================================
-      # MENU PENGATURAN / HAPUS LOG (DIPINDAHKAN KE ADMIN)
+      # MENU PENGATURAN / HAPUS LOG (HANYA UNTUK ADMIN)
       # ==========================================
       with st.expander("⚙️ Menu Pengaturan & Hapus Log (Admin Panel)"):
         tab_row, tab_hari, tab_minggu, tab_all = st.tabs([
@@ -912,5 +907,3 @@ else:
   st.info(
       f"Belum ada data laporan tersimpan untuk {st.session_state['user_spg']}."
   )
-
-```
