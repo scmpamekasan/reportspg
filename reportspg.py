@@ -362,7 +362,7 @@ def get_schedule_info_for_team(team_name):
   if not kota_col:
     return False, "Tidak Ada Jadwal Team Tersebut Untuk Hari Ini", "Surabaya"
     
-  today_date = datetime.utcnow().date() + timedelta(hours=7)
+  today_date = (datetime.utcnow() + timedelta(hours=7)).date()
   today_col = None
   for c in df_j.columns:
     try:
@@ -851,7 +851,8 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
       df_peta_all["Waktu_Dt"] = pd.to_datetime(
           df_peta_all["Waktu"], errors="coerce"
       )
-      df_peta_all["Tanggal"] = df_peta_all["Waktu_Dt"].dt.date
+      df_peta_all["Tanggal_Obj"] = df_peta_all["Waktu_Dt"].dt.date
+      df_peta_all["Tanggal"] = df_peta_all["Waktu_Dt"].dt.strftime("%d-%m-%Y")
       df_peta_all = df_peta_all.dropna(subset=["Latitude", "Longitude"])
 
       col_p1, col_p2, col_p3 = st.columns(3)
@@ -1020,7 +1021,8 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
     df_all_users["Waktu_Dt"] = pd.to_datetime(
         df_all_users["Waktu"], errors="coerce"
     )
-    df_all_users["Tanggal"] = df_all_users["Waktu_Dt"].dt.date
+    df_all_users["Tanggal_Obj"] = df_all_users["Waktu_Dt"].dt.date
+    df_all_users["Tanggal"] = df_all_users["Waktu_Dt"].dt.strftime("%d-%m-%Y")
     df_all_users["Jumlah_Bungkus"] = pd.to_numeric(
         df_all_users["Jumlah_Bungkus"], errors="coerce"
     ).fillna(0)
@@ -1175,7 +1177,8 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
     df_all_supervisi["Waktu_Dt"] = pd.to_datetime(
         df_all_supervisi["Waktu"], errors="coerce"
     )
-    df_all_supervisi["Tanggal"] = df_all_supervisi["Waktu_Dt"].dt.date
+    df_all_supervisi["Tanggal_Obj"] = df_all_supervisi["Waktu_Dt"].dt.date
+    df_all_supervisi["Tanggal"] = df_all_supervisi["Waktu_Dt"].dt.strftime("%d-%m-%Y")
     df_all_supervisi["Jumlah_Kontak_Manual"] = pd.to_numeric(
         df_all_supervisi["Jumlah_Kontak_Manual"], errors="coerce"
     ).fillna(0).astype(int)
@@ -1300,14 +1303,14 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
     with pd.ExcelWriter(output_lkk, engine="openpyxl") as writer:
       df_combine_admin.to_excel(writer, index=False, sheet_name="Rekap Combine LKK")
       if not df_all_supervisi.empty:
-        df_all_supervisi.drop(columns=["Waktu_Dt", "Tanggal"], errors="ignore").to_excel(
+        df_all_supervisi.drop(columns=["Waktu_Dt", "Tanggal_Obj", "Tanggal"], errors="ignore").to_excel(
             writer, index=False, sheet_name="Log Kontak Supervisi"
         )
 
     st.download_button(
         label="📥 Download Rekapitulasi Combine Per Titik LKK (.xlsx)",
         data=output_lkk.getvalue(),
-        file_name=f"rekap_combine_lkk_{datetime.utcnow().add_hours(7) if hasattr(datetime, 'add_hours') else (datetime.utcnow() + timedelta(hours=7)).strftime('%Y%m%d_%H%M%S')}.xlsx",
+        file_name=f"rekap_combine_lkk_{(datetime.utcnow() + timedelta(hours=7)).strftime('%Y%m%d_%H%M%S')}.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         key="btn_dl_combine_lkk_admin",
     )
@@ -1345,7 +1348,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
                 for item in selected_sup_rows
             ]
             df_sup_clean = df_all_supervisi.drop(index=indices_sup_drop).drop(
-                columns=["Waktu_Dt", "Tanggal"], errors="ignore"
+                columns=["Waktu_Dt", "Tanggal_Obj", "Tanggal"], errors="ignore"
             )
             save_supervisi_database(df_sup_clean)
             st.success(f"✅ Berhasil menghapus {len(indices_sup_drop)} baris data kontak Supervisi!")
@@ -1367,7 +1370,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
           st.info(f"Terdapat **{jml_sup_hari} entri kontak Supervisi** pada tanggal **{tgl_sup_hapus}**.")
           if st.button(f"🗑️ Hapus Data Kontak Tanggal {tgl_sup_hapus}", type="primary", key="btn_del_sup_day"):
             df_sup_clean = df_all_supervisi[df_all_supervisi["Tanggal"] != tgl_sup_hapus].drop(
-                columns=["Waktu_Dt", "Tanggal"], errors="ignore"
+                columns=["Waktu_Dt", "Tanggal_Obj", "Tanggal"], errors="ignore"
             )
             save_supervisi_database(df_sup_clean)
             st.success(f"✅ Seluruh data kontak Supervisi ({jml_sup_hari} baris) pada tanggal {tgl_sup_hapus} berhasil dihapus!")
@@ -1406,7 +1409,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
                 + iso_sup_all["week"].astype(str).str.zfill(2)
             )
             df_sup_clean = df_all_supervisi[yw_sup_series != target_sup_yw].drop(
-                columns=["Waktu_Dt", "Tanggal"], errors="ignore"
+                columns=["Waktu_Dt", "Tanggal_Obj", "Tanggal"], errors="ignore"
             )
             save_supervisi_database(df_sup_clean)
             st.success(f"✅ Data kontak Supervisi pada minggu {target_sup_yw} berhasil dihapus!")
@@ -1433,7 +1436,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
 
       st.markdown("##### 📋 Preview Log Input Kontak Manual Supervisi")
       st.dataframe(
-          df_all_supervisi.drop(columns=["Waktu_Dt", "Tanggal"], errors="ignore").sort_values(
+          df_all_supervisi.drop(columns=["Waktu_Dt", "Tanggal_Obj", "Tanggal"], errors="ignore").sort_values(
               by="Waktu", ascending=False
           ),
           use_container_width=True,
@@ -1475,7 +1478,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
                 for item in selected_rows
             ]
             df_clean = df_all_users.drop(index=indices_to_drop).drop(
-                columns=["Waktu_Dt", "Tanggal"], errors="ignore"
+                columns=["Waktu_Dt", "Tanggal_Obj", "Tanggal"], errors="ignore"
             )
             save_database(df_clean)
             st.success(f"✅ Berhasil menghapus {len(indices_to_drop)} baris transaksi!")
@@ -1497,7 +1500,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
           st.info(f"Terdapat **{jml_data_hari} transaksi** pada tanggal **{tgl_hapus}**.")
           if st.button(f"🗑️ Hapus Semua Data Tanggal {tgl_hapus}", type="primary", key="btn_del_day"):
             df_clean = df_all_users[df_all_users["Tanggal"] != tgl_hapus].drop(
-                columns=["Waktu_Dt", "Tanggal"], errors="ignore"
+                columns=["Waktu_Dt", "Tanggal_Obj", "Tanggal"], errors="ignore"
             )
             save_database(df_clean)
             st.success(f"✅ Seluruh data ({jml_data_hari} baris) pada tanggal {tgl_hapus} berhasil dihapus!")
@@ -1536,7 +1539,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
                 + iso_all["week"].astype(str).str.zfill(2)
             )
             df_clean = df_all_users[yw_series != target_yw].drop(
-                columns=["Waktu_Dt", "Tanggal"], errors="ignore"
+                columns=["Waktu_Dt", "Tanggal_Obj", "Tanggal"], errors="ignore"
             )
             save_database(df_clean)
             st.success(f"✅ Data pada minggu {target_yw} berhasil dihapus!")
@@ -1562,7 +1565,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
             st.warning("Centang kotak konfirmasi terlebih dahulu sebelum menghapus seluruh data.")
 
     st.dataframe(
-        df_all_users.drop(columns=["Waktu_Dt", "Tanggal"], errors="ignore").sort_values(
+        df_all_users.drop(columns=["Waktu_Dt", "Tanggal_Obj", "Tanggal"], errors="ignore").sort_values(
             by="Waktu", ascending=False
         ),
         use_container_width=True,
@@ -1768,7 +1771,7 @@ if not df_jadwal_raw.empty:
   kec_col_j = next((c for c in df_jadwal_raw.columns if "kecamatan" in c.lower()), None)
   
   if kota_col_j and kec_col_j:
-    today_date = datetime.utcnow().date() + timedelta(hours=7)
+    today_date = (datetime.utcnow() + timedelta(hours=7)).date()
     today_col = None
     for c in df_jadwal_raw.columns:
       try:
@@ -2176,9 +2179,11 @@ else:
   df_user_rekap = pd.DataFrame()
 
 if not df_user_rekap.empty:
-  df_user_rekap["Tanggal"] = pd.to_datetime(
+  df_user_rekap["Waktu_Dt"] = pd.to_datetime(
       df_user_rekap["Waktu"], errors="coerce"
-  ).dt.date
+  )
+  df_user_rekap["Tanggal_Obj"] = df_user_rekap["Waktu_Dt"].dt.date
+  df_user_rekap["Tanggal"] = df_user_rekap["Waktu_Dt"].dt.strftime("%d-%m-%Y")
   df_user_rekap["Nama_SPG"] = df_user_rekap["Nama_SPG"].fillna("-")
 
   st.markdown("#### 📋 Tabel Evaluasi Harian Per SPG (Berdasarkan Target SPG)")
@@ -2234,7 +2239,7 @@ if not df_user_rekap.empty:
   st.markdown("---")
   st.markdown("#### 📑 Log Detail Transaksi & Pengaturan")
   
-  cols_to_drop_spg = ["Tanggal", "Plat_Mobil"] if "Plat_Mobil" in df_user_rekap.columns else ["Tanggal"]
+  cols_to_drop_spg = ["Tanggal_Obj", "Plat_Mobil", "Waktu_Dt"] if "Plat_Mobil" in df_user_rekap.columns else ["Tanggal_Obj", "Waktu_Dt"]
   st.dataframe(
       df_user_rekap.drop(columns=cols_to_drop_spg, errors="ignore"),
       use_container_width=True,
@@ -2245,7 +2250,7 @@ if not df_user_rekap.empty:
     df_eval_spg.to_excel(
         writer, index=False, sheet_name="Evaluasi Harian SPG"
     )
-    df_user_rekap.drop(columns=["Tanggal"], errors="ignore").to_excel(
+    df_user_rekap.drop(columns=["Tanggal_Obj", "Waktu_Dt"], errors="ignore").to_excel(
         writer, index=False, sheet_name="Detail Transaksi"
     )
 
