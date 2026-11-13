@@ -1,13 +1,37 @@
-from datetime import datetime, timedelta
 from io import BytesIO
 import json
 import os
-import geopandas as gpd
+
 import pandas as pd
 import pydeck as pdk
-from shapely.geometry import Point
 import streamlit as st
+from shapely.geometry import Point
 from streamlit_js_eval import get_geolocation
+
+from app_config import (
+    DB_FILE,
+    DB_SUPERVISI_KONTAK_FILE,
+    EXPECTED_COLUMNS,
+    EXPECTED_SUPERVISI_COLUMNS,
+    JADWAL_SPG_FILE,
+    MASTER_BRAND_FILE,
+    MASTER_LOKASI_FILE,
+    MASTER_PLAT_FILE,
+    MASTER_SPG_FILE,
+    MASTER_TEAM_BRAND_FILE,
+)
+from data_store import (
+    load_database,
+    load_master_wilayah,
+    load_supervisi_database,
+    save_database,
+    save_supervisi_database,
+)
+from date_utils import (
+    add_custom_week_columns,
+    get_custom_week_info,
+    now_wib,
+)
 
 # ====================================================
 # KONFIGURASI HALAMAN STREAMLIT
@@ -434,7 +458,7 @@ def get_schedule_info_for_team(team_name):
   if not kota_col:
     return False, "Tidak Ada Jadwal Team Tersebut Untuk Hari Ini", "Surabaya"
 
-  today_date = (datetime.utcnow() + timedelta(hours=7)).date()
+  today_date = (now_wib()).date()
   today_col = None
   for c in df_j.columns:
     try:
@@ -1205,7 +1229,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
     ).fillna(0)
 
     # Perhitungan KPI Card Lengkap Omset & Konsumen
-    today_dt = datetime.utcnow() + timedelta(hours=7)
+    today_dt = now_wib()
     today_str = today_dt.strftime("%d-%m-%Y")
     current_month_str = today_dt.strftime("%m-%Y")
     current_week_label, _ = get_custom_week_info(today_dt)
@@ -1788,7 +1812,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
         data=output_lkk.getvalue(),
         file_name=(
             "rekap_combine_lkk_"
-            f"{(datetime.utcnow() + timedelta(hours=7)).strftime('%Y%m%d_%H%M%S')}.xlsx"
+            f"{(now_wib()).strftime('%Y%m%d_%H%M%S')}.xlsx"
         ),
         mime=(
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -2386,7 +2410,7 @@ if not df_jadwal_raw.empty:
   )
 
   if kota_col_j and kec_col_j:
-    today_date = (datetime.utcnow() + timedelta(hours=7)).date()
+    today_date = (now_wib()).date()
     today_col = None
     for c in df_jadwal_raw.columns:
       try:
@@ -2539,7 +2563,7 @@ if st.session_state["login_mode"] == "Supervisi":
 
     if btn_simpan_kontak:
       df_sup_db = load_supervisi_database()
-      waktu_wib = datetime.utcnow() + timedelta(hours=7)
+      waktu_wib = now_wib()
       new_sup_row = {
           "Waktu": waktu_wib.strftime("%Y-%m-%d %H:%M:%S"),
           "Promotor": st.session_state["user_spg"],
@@ -2842,7 +2866,7 @@ if (
             if instagram_input.strip()
             else "-"
         )
-        waktu_wib = datetime.utcnow() + timedelta(hours=7)
+        waktu_wib = now_wib()
         data_baru = {
             "Waktu": waktu_wib.strftime("%Y-%m-%d %H:%M:%S"),
             "Promotor": st.session_state["user_spg"],
@@ -3034,7 +3058,7 @@ if not df_user_rekap.empty:
       file_name=(
           f"rekap_evaluasi_{st.session_state['user_spg'].replace(' ', '_')}_"
           f"{st.session_state['kota_kab']}_"
-          f"{(datetime.utcnow() + timedelta(hours=7)).strftime('%Y%m%d_%H%M%S')}.xlsx"
+          f"{(now_wib()).strftime('%Y%m%d_%H%M%S')}.xlsx"
       ),
       mime=(
           "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
