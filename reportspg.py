@@ -1056,15 +1056,17 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
     st.stop()
 
     
-# --- TAMPILAN MONITORING JADWAL SPG (DENGAN TOMBOL TAMBAH BARIS & EDIT) ---
+# --- TAMPILAN MONITORING JADWAL SPG (DENGAN MENU TAMBAH & HAPUS BARIS) ---
   if st.session_state["admin_view"] == "Master_Jadwal_Excel":
     st.markdown("## 📅 Monitoring Jadwal SPG (Kecamatan, Team & Tanggal)")
-    st.caption("Monitoring, tambah, dan edit jadwal SPG harian berdasarkan Kecamatan, Nama Team, dan Tanggal.")
+    st.caption("Monitoring, tambah, edit, dan hapus jadwal SPG harian berdasarkan Kecamatan, Nama Team, dan Tanggal.")
 
     df_jadwal_raw_file = load_jadwal_spg()
     
-    # Tombol interaktif untuk menambah baris jadwal baru
-    with st.expander("➕ Tambah Data Jadwal Baru", expanded=False):
+    # Navigasi tab aksi (Tambah Baris & Hapus Baris)
+    tab_j_tambah, tab_j_hapus = st.tabs(["➕ Tambah Jadwal Baru", "🗑️ Hapus Baris / Data Jadwal"])
+
+    with tab_j_tambah:
       with st.form("form_tambah_jadwal_baru"):
         col_jt1, col_jt2, col_jt3, col_jt4 = st.columns(4)
         with col_jt1:
@@ -1082,15 +1084,11 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
           if input_kec_j.strip() and input_team_j.strip():
             tgl_str_col = input_tgl_j.strftime("%Y-%m-%d 00:00:00")
             
-            # Jika file excel jadwal sudah ada
             if not df_jadwal_raw_file.empty:
               meta_cols = [c for c in df_jadwal_raw_file.columns if str(c).strip().lower() in ["kota", "kecamatan"]]
-              
-              # Cek apakah kolom tanggal sudah ada di file excel
               if tgl_str_col not in df_jadwal_raw_file.columns:
                 df_jadwal_raw_file[tgl_str_col] = "-"
               
-              # Cari apakah kecamatan sudah ada
               kec_col_target = meta_cols[1] if len(meta_cols) > 1 else "Kecamatan"
               kota_col_target = meta_cols[0] if len(meta_cols) > 0 else "Kota"
               
@@ -1104,7 +1102,6 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
                 new_row_j = {kota_col_target: input_kota_j, kec_col_target: input_kec_j.strip(), tgl_str_col: input_team_j.strip()}
                 df_jadwal_raw_file = pd.concat([df_jadwal_raw_file, pd.DataFrame([new_row_j])], ignore_index=True)
             else:
-              # Jika file masih kosong
               df_jadwal_raw_file = pd.DataFrame(columns=["Kota", "Kecamatan", tgl_str_col])
               new_row_j = {"Kota": input_kota_j, "Kecamatan": input_kec_j.strip(), tgl_str_col: input_team_j.strip()}
               df_jadwal_raw_file = pd.DataFrame([new_row_j])
@@ -1117,6 +1114,52 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
               st.error(f"Gagal menyimpan ke file `Jadwal SPG.xlsx`: {e}")
           else:
             st.warning("Mohon isi nama Kecamatan dan Nama Team.")
+
+    with tab_j_hapus:
+      st.markdown("##### 🗑️ Hapus Baris Jadwal Berdasarkan Pilihan")
+      if not df_jadwal_raw_file.empty:
+        meta_cols_h = [c for c in df_jadwal_raw_file.columns if str(c).strip().lower() in ["kota", "kecamatan"]]
+        date_cols_h = [c for c in df_jadwal_raw_file.columns if c not in meta_cols_h]
+        
+        melted_h = df_jadwal_raw_file.melt(id_vars=meta_cols_h, value_vars=date_cols_h, var_name="Kolom_Tanggal", value_name="Team")
+        melted_h = melted_h.dropna(subset=["Team"])
+        melted_h = melted_h[melted_h["Team"].astype(str).str.strip().str.lower() != "nan"]
+        melted_h = melted_h[melted_h["Team"].astype(str).str.strip() != "-"]
+        melted_h["Tgl_Fmt"] = pd.to_datetime(melted_h["Kolom_Tanggal"], errors="coerce").dt.strftime("%d-%m-%Y")
+        
+        kec_c_name = meta_cols_h[1] if len(meta_cols_h) > 1 else "Kecamatan"
+        
+        opsi_hapus_jadwal = [
+            f"Baris #{idx} | Tgl: {row['Tgl_Fmt']} | Kec: {row[kec_c_name]} | Team: {row['Team']}"
+            for idx, row in melted_h.iterrows()
+        ]
+        
+        selected_j_to_delete = st.multiselect("Pilih baris jadwal yang ingin dihapus:", options=opsi_hapus_jadwal, key="ms_del_jadwal_rows")
+        
+        if st.button("🗑️ Hapus Baris Jadwal Terpilih", type="primary", key="btn_exec_del_jadwal"):
+          if selected_j_to_delete:
+            indices_to_clear = [int(item.split(" | ")[0].replace("Baris #", "")) for item in selected_j_to_delete]
+            
+            for idx_to_clear in indices_to_clear:
+              orig_row_idx = melted_h.loc[idx_to_clear, "orig_index"] if "orig_index" in melted_h.columns else idx_to_clear
+              # Kosongkan sel team pada baris dan kolom tanggal tersebut di df_jadwal_raw_file asli
+              col_tgl_target = melted_h.loc[idx_to_clear, "Kolom_Tanggal"]
+              # Cari row asli di df_jadwal_raw_file berdasarkan kecamatannya
+              kec_val = melted_h.loc[idx_to_clear, kec_c_name]
+              match_row_idx = df_jadwal_raw_file[df_jadwal_raw_file[kec_c_name].astype(str).str.strip() == str(kec_val).strip()].index
+              if len(match_row_idx) > 0:
+                df_jadwal_raw_file.loc[match_row_idx[0], col_tgl_target] = "-"
+                
+            try:
+              df_jadwal_raw_file.to_excel(JADWAL_SPG_FILE, index=False)
+              st.success("✅ Baris jadwal terpilih berhasil dihapus!")
+              st.rerun()
+            except Exception as e:
+              st.error(f"Gagal memperbarui file Excel: {e}")
+          else:
+            st.warning("Silakan pilih minimal 1 baris jadwal yang ingin dihapus.")
+      else:
+        st.info("Belum ada data jadwal untuk dihapus.")
 
     st.markdown("---")
 
@@ -1181,6 +1224,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
       st.session_state["admin_view"] = "Dashboard"
       st.rerun()
     st.stop()
+      
       
       
   # --- TAMPILAN PETA RUTE (DENGAN POLIGON KECAMATAN) ---
