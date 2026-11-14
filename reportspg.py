@@ -1007,8 +1007,19 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
                 col_jt1, col_jt2, col_jt3, col_jt4 = st.columns(4)
                 with col_jt1:
                     input_kota_j = st.selectbox("Kota", options=["Surabaya", "Gresik"], key="add_j_kota")
+                
+                # Mengambil daftar kecamatan secara dinamis berdasarkan file GeoJSON wilayah yang dipilih
+                gdf_geojson_admin = load_master_wilayah(input_kota_j)
+                daftar_kec_geojson = []
+                if gdf_geojson_admin is not None:
+                    col_kec_gj = next((c for c in ["nm_kecamatan", "KECAMATAN", "kecamatan", "Name", "NAME"] if c in gdf_geojson_admin.columns), None)
+                    if col_kec_gj:
+                        daftar_kec_geojson = sorted(gdf_geojson_admin[col_kec_gj].dropna().unique().tolist())
+                if not daftar_kec_geojson:
+                    daftar_kec_geojson = ["Tegalsari", "Wonokromo", "Rungkut", "Asemrowo", "Benowo"]
+
                 with col_jt2:
-                    input_kec_j = st.text_input("Kecamatan", placeholder="Cth: Tegalsari", key="add_j_kec")
+                    input_kec_j = st.selectbox("Kecamatan", options=daftar_kec_geojson, key="add_j_kec")
                 with col_jt3:
                     input_tgl_j = st.date_input("Tanggal Jadwal", key="add_j_tgl")
                 with col_jt4:
