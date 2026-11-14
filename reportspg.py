@@ -988,15 +988,20 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
             st.rerun()
         st.stop()
 
-    # --- TAMPILAN MONITORING JADWAL SPG (DENGAN MENU TAMBAH, HAPUS ROW, & SAVE DATA) ---
-   if st.session_state["admin_view"] == "Master_Jadwal_Excel":
-    st.markdown("## 📅 Monitoring Jadwal SPG (Kecamatan, Team & Tanggal)")
-    st.caption("Monitoring, tambah, edit, hapus baris, dan simpan jadwal SPG harian berdasarkan Kecamatan, Nama Team, dan Tanggal.")
+       # --- TAMPILAN MONITORING JADWAL SPG (DENGAN MENU TAMBAH, HAPUS ROW, & SAVE DATA) ---
+    elif st.session_state["admin_view"] == "Master_Jadwal_Excel":
+        st.markdown("## 📅 Monitoring Jadwal SPG (Kecamatan, Team & Tanggal)")
+        st.caption(
+            "Monitoring, tambah, edit, hapus baris, dan simpan jadwal SPG harian "
+            "berdasarkan Kecamatan, Nama Team, dan Tanggal."
+        )
 
-    df_jadwal_raw_file = load_jadwal_spg()
-    
-    # Navigasi tab aksi (Tambah Jadwal Baru & Hapus Baris Jadwal)
-    tab_j_tambah, tab_j_hapus = st.tabs(["➕ Tambah Jadwal Baru", "🗑️ Hapus Baris / Data Jadwal"])
+        df_jadwal_raw_file = load_jadwal_spg()
+
+        # Navigasi tab aksi (Tambah Jadwal Baru & Hapus Baris Jadwal)
+        tab_j_tambah, tab_j_hapus = st.tabs(
+            ["➕ Tambah Jadwal Baru", "🗑️ Hapus Baris / Data Jadwal"]
+        )
 
     with tab_j_tambah:
       with st.form("form_tambah_jadwal_baru"):
