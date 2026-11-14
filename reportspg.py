@@ -363,11 +363,16 @@ def load_master_team_brands():
 
 def save_master_team_brands(team_brands):
   try:
+    # Pastikan semua elemen di dalam dictionary berupa list murni (bukan tuple/set)
+    cleaned_data = {}
+    for team, brands in team_brands.items():
+      cleaned_data[str(team)] = [str(b).strip() for b in brands]
+
     with open(MASTER_TEAM_BRAND_FILE, "w", encoding="utf-8") as f:
-      json.dump(team_brands, f, ensure_ascii=False, indent=2)
+      json.dump(cleaned_data, f, ensure_ascii=False, indent=2)
     return True
   except Exception as e:
-    st.error(f"Gagal menyimpan file master_team_brand.json: {e}. Periksa izin folder.")
+    st.error(f"Gagal menyimpan file `master_team_brand.json`: {e}")
     return False
       
 
@@ -715,7 +720,10 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
       )
 
       if btn_save_team_brand:
+        # Ambil dictionary terbaru, perbarui data team yang dipilih
         team_brands_dict[selected_team_config] = selected_brands_input
+        
+        # Panggil fungsi simpan yang sudah dibersihkan
         success_save = save_master_team_brands(team_brands_dict)
         
         if success_save:
@@ -724,7 +732,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
               " disimpan!"
           )
           st.rerun()
-
+            
     st.markdown("---")
     st.markdown("#### 📋 Ringkasan Alokasi Brand Seluruh Team (1 - 20)")
     summary_list = []
