@@ -697,40 +697,75 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
         " (Team 1 sampai 20)."
     )
 
-    # Muat ulang data terbaru setiap render halaman
+    # Muat data terbaru secara dinamis
     all_available_brands = load_master_brands()
     team_brands_dict = load_master_team_brands()
 
     selected_team_config = st.selectbox(
         "Pilih Team SPG untuk Konfigurasi Brand",
         options=[f"Team SPG {i}" for i in range(1, 21)],
+        key="selectbox_config_team_spg"
     )
 
     current_assigned_brands = team_brands_dict.get(
         selected_team_config, all_available_brands
     )
 
+    # Pastikan default multiselect hanya berisi brand yang benar-benar ada di all_available_brands
+    valid_default_brands = [
+        b for b in current_assigned_brands if b in all_available_brands
+    ]
+
     with st.form("form_config_team_brand"):
       st.markdown(f"#### Alokasi Merek untuk `{selected_team_config}`")
+      
       selected_brands_input = st.multiselect(
           "Pilih Brand Rokok yang Diizinkan",
-          options=all_available_brands, # <-- Ini akan otomatis memuat brand baru
-          default=[
-              b for b in current_assigned_brands if b in all_available_brands
-          ],
+          options=all_available_brands,
+          default=valid_default_brands,
+          key="multiselect_team_brands_input"
       )
+      
       btn_save_team_brand = st.form_submit_button(
           "💾 Simpan Alokasi Brand Team"
       )
 
       if btn_save_team_brand:
+        # Simpan pembaruan ke dictionary
         team_brands_dict[selected_team_config] = selected_brands_input
-        save_master_team_brands(team_brands_dict)
-        st.success(
-            f"✅ Alokasi brand rokok untuk **{selected_team_config}** berhasil"
-            " disimpan!"
-        )
-        st.rerun()
+        
+        # Eksekusi penyimpanan ke file JSON
+        success_save = save_master_team_brands(team_brands_dict)
+        
+        if success_save:
+          st.success(
+              f"✅ Alokasi brand rokok untuk **{selected_team_config}** berhasil"
+              " disimpan ke `master_team_brand.json`!"
+          )
+          st.rerun()
+        else:
+          st.error("❌ Gagal menyimpan file `master_team_brand.json`. Periksa izin folder.")
+
+    st.markdown("---")
+    st.markdown("#### 📋 Ringkasan Alokasi Brand Seluruh Team (1 - 20)")
+    summary_list = []
+    for i in range(1, 21):
+      t_name = f"Team SPG {i}"
+      b_list = team_brands_dict.get(t_name, [])
+      summary_list.append({
+          "Team": t_name,
+          "Brand Diizinkan": ", ".join(b_list)
+          if b_list
+          else "(Belum ada brand)",
+      })
+
+    st.dataframe(pd.DataFrame(summary_list), use_container_width=True)
+
+    st.markdown("---")
+    if st.button("⬅️ Kembali ke Dashboard", key="btn_back_from_master_team"):
+      st.session_state["admin_view"] = "Dashboard"
+      st.rerun()
+    st.stop()
           
     st.markdown("---")
     st.markdown("#### 📋 Ringkasan Alokasi Brand Seluruh Team (1 - 20)")
