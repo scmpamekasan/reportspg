@@ -1019,7 +1019,8 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
                     daftar_kec_geojson = ["Tegalsari", "Wonokromo", "Rungkut", "Asemrowo", "Benowo"]
 
                 with col_jt2:
-                    input_kec_j = st.selectbox("Kecamatan", options=daftar_kec_geojson, key="add_j_kec")
+                    # Diubah menjadi st.multiselect untuk pilihan jamak (multiple choice)
+                    input_kec_list_j = st.multiselect("Pilih Kecamatan (Bisa Lebih dari 1)", options=daftar_kec_geojson, key="add_j_kec_multi")
                 with col_jt3:
                     input_tgl_j = st.date_input("Tanggal Jadwal", key="add_j_tgl")
                 with col_jt4:
@@ -1028,39 +1029,40 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
                 btn_submit_new_jadwal = st.form_submit_button("➕ Masukkan ke Tabel Jadwal", type="primary")
                 
                 if btn_submit_new_jadwal:
-                    if input_kec_j.strip() and input_team_j.strip():
+                    if input_kec_list_j and input_team_j.strip():
                         tgl_str_col = input_tgl_j.strftime("%Y-%m-%d 00:00:00")
                         
-                        if not df_jadwal_raw_file.empty:
-                            meta_cols = [c for c in df_jadwal_raw_file.columns if str(c).strip().lower() in ["kota", "kecamatan"]]
-                            if tgl_str_col not in df_jadwal_raw_file.columns:
-                                df_jadwal_raw_file[tgl_str_col] = "-"
-                          
-                            kec_col_target = meta_cols[1] if len(meta_cols) > 1 else "Kecamatan"
-                            kota_col_target = meta_cols[0] if len(meta_cols) > 0 else "Kota"
-                          
-                            matched_idx = df_jadwal_raw_file[
-                                df_jadwal_raw_file[kec_col_target].astype(str).str.strip().str.lower() == input_kec_j.strip().lower()
-                            ].index
-                          
-                            if len(matched_idx) > 0:
-                                df_jadwal_raw_file.loc[matched_idx[0], tgl_str_col] = input_team_j.strip()
+                        for input_kec_j in input_kec_list_j:
+                            if not df_jadwal_raw_file.empty:
+                                meta_cols = [c for c in df_jadwal_raw_file.columns if str(c).strip().lower() in ["kota", "kecamatan"]]
+                                if tgl_str_col not in df_jadwal_raw_file.columns:
+                                    df_jadwal_raw_file[tgl_str_col] = "-"
+                              
+                                kec_col_target = meta_cols[1] if len(meta_cols) > 1 else "Kecamatan"
+                                kota_col_target = meta_cols[0] if len(meta_cols) > 0 else "Kota"
+                              
+                                matched_idx = df_jadwal_raw_file[
+                                    df_jadwal_raw_file[kec_col_target].astype(str).str.strip().str.lower() == input_kec_j.strip().lower()
+                                ].index
+                              
+                                if len(matched_idx) > 0:
+                                    df_jadwal_raw_file.loc[matched_idx[0], tgl_str_col] = input_team_j.strip()
+                                else:
+                                    new_row_j = {kota_col_target: input_kota_j, kec_col_target: input_kec_j.strip(), tgl_str_col: input_team_j.strip()}
+                                    df_jadwal_raw_file = pd.concat([df_jadwal_raw_file, pd.DataFrame([new_row_j])], ignore_index=True)
                             else:
-                                new_row_j = {kota_col_target: input_kota_j, kec_col_target: input_kec_j.strip(), tgl_str_col: input_team_j.strip()}
-                                df_jadwal_raw_file = pd.concat([df_jadwal_raw_file, pd.DataFrame([new_row_j])], ignore_index=True)
-                        else:
-                            df_jadwal_raw_file = pd.DataFrame(columns=["Kota", "Kecamatan", tgl_str_col])
-                            new_row_j = {"Kota": input_kota_j, "Kecamatan": input_kec_j.strip(), tgl_str_col: input_team_j.strip()}
-                            df_jadwal_raw_file = pd.DataFrame([new_row_j])
+                                df_jadwal_raw_file = pd.DataFrame(columns=["Kota", "Kecamatan", tgl_str_col])
+                                new_row_j = {"Kota": input_kota_j, "Kecamatan": input_kec_j.strip(), tgl_str_col: input_team_j.strip()}
+                                df_jadwal_raw_file = pd.DataFrame([new_row_j])
                           
                         try:
                             df_jadwal_raw_file.to_excel(JADWAL_SPG_FILE, index=False)
-                            st.success(f"✅ Jadwal untuk Kecamatan `{input_kec_j}` ({input_team_j}) berhasil ditambahkan!")
+                            st.success(f"✅ Jadwal untuk {len(input_kec_list_j)} kecamatan terpilih ({input_team_j}) berhasil ditambahkan!")
                             st.rerun()
                         except Exception as e:
                             st.error(f"Gagal menyimpan ke file `Jadwal SPG.xlsx`: {e}")
                     else:
-                        st.warning("Mohon isi nama Kecamatan dan Nama Team.")
+                        st.warning("Mohon pilih minimal 1 Kecamatan dan isi Nama Team.")
 
         with tab_j_hapus:
             st.markdown("##### 🗑️ Hapus Baris Jadwal Berdasarkan Pilihan")
