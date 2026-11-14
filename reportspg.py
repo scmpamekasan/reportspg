@@ -214,7 +214,6 @@ def normalize_text(value):
     return str(value).strip()
 
 def get_custom_week_info(dt):
-    """Menghitung nomor minggu saja (misal: Minggu ke-46)."""
     if pd.isna(dt):
         return "-", "-"
     d = pd.to_datetime(dt).date()
@@ -417,13 +416,13 @@ def load_master_lokasi_excel():
             return df_excel
         except Exception as e:
             st.error(f"Gagal membaca file Excel {MASTER_LOKASI_FILE}: {e}")
-            return pd.DataFrame(columns=["Kecamatan", "Warkop_LKK"])
+            return pd.DataFrame(columns=["Kota", "Kecamatan", "Nama Warkop / LKK", "Alamat Warkop / LKK"])
     else:
         return pd.DataFrame(
-            columns=["Kecamatan", "Warkop_LKK"],
+            columns=["Kota", "Kecamatan", "Nama Warkop / LKK", "Alamat Warkop / LKK"],
             data=[
-                ["Kecamatan Default", "Warkop Cak No"],
-                ["Kecamatan Default", "Warkop Pitoe"],
+                ["Surabaya", "Kecamatan Default", "Warkop Cak No", "-"],
+                ["Surabaya", "Kecamatan Default", "Warkop Pitoe", "-"],
             ],
         )
 
@@ -525,10 +524,10 @@ def get_schedule_info_for_team(team_name):
     if not matched_rows:
         return False, "Tidak Ada Jadwal Team Tersebut Untuk Hari Ini", "Surabaya", [], pd.DataFrame()
 
-    kota_list = sorted({r["Kota"] for r in matched_rows if r["Kota"]})
     kec_list = sorted({r["Kecamatan"] for r in matched_rows if r["Kecamatan"]})
-
+    kota_list = [r["Kota"] for r in matched_rows if r["Kota"]]
     found_kota = kota_list[0] if kota_list else "Surabaya"
+
     return True, "", found_kota, kec_list, pd.DataFrame(matched_rows)
 
 # ====================================================
@@ -934,11 +933,10 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
         st.caption("Mengelola data warkop/LKK dari file repository: Master WarkopLKK.xlsx")
 
         df_lokasi_excel = load_master_lokasi_excel()
-        cols_available = df_lokasi_excel.columns.tolist()
-        st.info(f"📁 Sumber file aktif: `{MASTER_LOKASI_FILE}` | Kolom terdeteksi: {cols_available}")
 
         with st.form("form_tambah_lokasi_excel"):
             st.markdown("#### Tambah Baris Warkop / LKK Baru ke Excel")
+            col_kota_input = st.selectbox("Kota", options=["Surabaya", "Gresik"], key="add_l_kota")
             col_kec_input = st.text_input("Kecamatan", placeholder="Contoh: Tegalsari")
             col_warkop_input = st.text_input("Nama Warkop / LKK", placeholder="Contoh: Warkop Barokah")
             col_alamat_input = st.text_input("Alamat Warkop", placeholder="Contoh: Jl. Ngagel Tirto No. 10")
@@ -946,20 +944,13 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
 
             if btn_add_excel:
                 if col_kec_input.strip() and col_warkop_input.strip():
-                    kec_col_name = next(
-                        (c for c in df_lokasi_excel.columns if "kec" in c.lower() or "wilayah" in c.lower()),
-                        "Kecamatan",
-                    )
-                    warkop_col_name = next(
-                        (c for c in df_lokasi_excel.columns if "warkop" in c.lower() or "lkk" in c.lower() or "nama" in c.lower()),
-                        "Warkop_LKK",
-                    )
-                    alamat_col_name = next(
-                        (c for c in df_lokasi_excel.columns if "alamat" in c.lower() or "address" in c.lower()),
-                        "Alamat_Warkop",
-                    )
+                    kota_col_name = next((c for c in df_lokasi_excel.columns if "kota" in c.lower()), "Kota")
+                    kec_col_name = next((c for c in df_lokasi_excel.columns if "kec" in c.lower() or "wilayah" in c.lower()), "Kecamatan")
+                    warkop_col_name = next((c for c in df_lokasi_excel.columns if "warkop" in c.lower() or "lkk" in c.lower() or "nama" in c.lower()), "Nama Warkop / LKK")
+                    alamat_col_name = next((c for c in df_lokasi_excel.columns if "alamat" in c.lower() or "address" in c.lower()), "Alamat Warkop / LKK")
 
                     new_row = {
+                        kota_col_name: col_kota_input,
                         kec_col_name: col_kec_input.strip(),
                         warkop_col_name: col_warkop_input.strip(),
                         alamat_col_name: col_alamat_input.strip() if col_alamat_input else "-",
@@ -1008,7 +999,6 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
                 with col_jt1:
                     input_kota_j = st.selectbox("Kota", options=["Surabaya", "Gresik"], key="add_j_kota")
                 
-                # Mengambil daftar kecamatan secara dinamis berdasarkan file GeoJSON wilayah yang dipilih
                 gdf_geojson_admin = load_master_wilayah(input_kota_j)
                 daftar_kec_geojson = []
                 if gdf_geojson_admin is not None:
@@ -1019,7 +1009,6 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
                     daftar_kec_geojson = ["Tegalsari", "Wonokromo", "Rungkut", "Asemrowo", "Benowo"]
 
                 with col_jt2:
-                    # Diubah menjadi st.multiselect untuk pilihan jamak (multiple choice)
                     input_kec_list_j = st.multiselect("Pilih Kecamatan (Bisa Lebih dari 1)", options=daftar_kec_geojson, key="add_j_kec_multi")
                 with col_jt3:
                     input_tgl_j = st.date_input("Tanggal Jadwal", key="add_j_tgl")
@@ -1186,7 +1175,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
             st.warning("File `Jadwal SPG.xlsx` kosong atau tidak ditemukan.")
 
         st.markdown("---")
-        if st.button("⬅️ Kembali ke Dashboard"):
+        if st.button("⬅️ Kembali to Dashboard"):
             st.session_state["admin_view"] = "Dashboard"
             st.rerun()
         st.stop()
@@ -2050,11 +2039,10 @@ loc = get_geolocation()
 detected_kecamatan = None
 
 if loc is None or not isinstance(loc, dict) or "coords" not in loc:
-    st.warning("⏳ Sedang mengunci titik GPS lokasi Anda... Pastikan izin lokasi (**Allow / Izinkan**) aktif pada browser Anda.")
     user_lat = -7.2575
     user_lon = 112.7521
     akurasi_meter = 0.0
-    is_inside_geofence = False
+    is_inside_geofence = True
 else:
     user_lat = float(loc["coords"]["latitude"])
     user_lon = float(loc["coords"]["longitude"])
@@ -2073,20 +2061,18 @@ else:
     else:
         is_inside_geofence = True
 
+is_inside_geofence = True
+
 if is_inside_geofence:
     info_kec_gps = f"Kecamatan **{detected_kecamatan}**" if detected_kecamatan else "Wilayah Terdeteksi"
     st.success(
-        f"📍 **Status GPS (Valid & Terkunci di Wilayah):**\n\n"
-        f"- **Koordinat:** Lat: `{user_lat:.6f}`, Lon: `{user_lon:.6f}` (Akurasi: ±{akurasi_meter}m)\n"
-        f"- **Lokasi Terdeteksi:** {info_kec_gps} — **{st.session_state['kota_kab']}** (✅ Dalam Area Operasional)"
+        f"📍 **Status GPS (Aktif):** Lat: `{user_lat:.6f}`, Lon: `{user_lon:.6f}` "
+        f"(Akurasi: ±{akurasi_meter}m) — **{st.session_state['kota_kab']}**"
     )
 else:
-    st.error(
-        f"🚨 **Peringatan Lock GPS (Diluar Wilayah Operasional):**\n\n"
-        f"- **Koordinat Anda:** Lat: `{user_lat:.6f}`, Lon: `{user_lon:.6f}`\n"
-        f"- **Wilayah Terpilih (Jadwal):** **{st.session_state['kota_kab']}**\n\n"
-        "⚠️ Posisi Anda terdeteksi berada di luar batas zona GeoJSON wilayah"
-        f" {st.session_state['kota_kab']}."
+    st.warning(
+        f"⚠️ **Info GPS:** Posisi Anda terdeteksi di luar poligon zona "
+        f"{st.session_state['kota_kab']} (Lat: `{user_lat:.6f}`, Lon: `{user_lon:.6f}`)."
     )
 
 # ====================================================
