@@ -355,7 +355,10 @@ def save_master_brands(brands):
 
 
 def load_master_team_brands():
-  default_teams = {f"Team SPG {i}": DEFAULT_BRANDS.copy() for i in range(1, 21)}
+  # Ambil merek rokok terbaru yang aktif dari master brand
+  current_brands = load_master_brands()
+  default_teams = {f"Team SPG {i}": current_brands.copy() for i in range(1, 21)}
+  
   if os.path.exists(MASTER_TEAM_BRAND_FILE):
     try:
       with open(MASTER_TEAM_BRAND_FILE, "r", encoding="utf-8") as f:
@@ -363,7 +366,12 @@ def load_master_team_brands():
         for i in range(1, 21):
           t_name = f"Team SPG {i}"
           if t_name not in data:
-            data[t_name] = DEFAULT_BRANDS.copy()
+            data[t_name] = current_brands.copy()
+          else:
+            # Opsional: Pastikan brand baru yang ditambahkan di master brand 
+            # juga otomatis tersedia atau bisa di-check di team jika diperlukan, 
+            # atau biarkan sesuai kustomisasi simpanan admin.
+            pass
         return data
     except Exception:
       return default_teams
@@ -687,8 +695,9 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
         " (Team 1 sampai 20)."
     )
 
-    team_brands_dict = load_master_team_brands()
+    # Muat ulang data terbaru setiap render halaman
     all_available_brands = load_master_brands()
+    team_brands_dict = load_master_team_brands()
 
     selected_team_config = st.selectbox(
         "Pilih Team SPG untuk Konfigurasi Brand",
@@ -703,7 +712,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
       st.markdown(f"#### Alokasi Merek untuk `{selected_team_config}`")
       selected_brands_input = st.multiselect(
           "Pilih Brand Rokok yang Diizinkan",
-          options=all_available_brands,
+          options=all_available_brands, # <-- Ini akan otomatis memuat brand baru
           default=[
               b for b in current_assigned_brands if b in all_available_brands
           ],
@@ -720,7 +729,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
             " disimpan!"
         )
         st.rerun()
-
+          
     st.markdown("---")
     st.markdown("#### 📋 Ringkasan Alokasi Brand Seluruh Team (1 - 20)")
     summary_list = []
