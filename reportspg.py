@@ -310,6 +310,8 @@ DEFAULT_BRANDS = [
     "D.76 Apel Royal",
     "Black Matcha K12",
     "Djarum 76 Aksara",
+    "Djarum Black Siro",
+    "Djarum Black Kuro",
 ]
 DEFAULT_SPGS = ["Nanda", "Dewi", "Aci", "Ayu"]
 DEFAULT_PLATS = ["L 1234 ABC", "L 5678 XYZ"]
