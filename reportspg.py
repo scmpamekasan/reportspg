@@ -168,6 +168,7 @@ st.markdown(
 DB_FILE = "rekap_laporan_spg.csv"
 DB_SUPERVISI_KONTAK_FILE = "rekap_kontak_supervisi.csv"
 MASTER_BRAND_FILE = "master_brand_rokok.json"
+MASTER_TARGET_FILE = "master_target_brand.json"
 MASTER_LOKASI_FILE = "Master WarkopLKK.xlsx"
 MASTER_SPG_FILE = "master_nama_spg.json"
 MASTER_TEAM_BRAND_FILE = "master_team_brand.json"
@@ -500,31 +501,42 @@ def get_schedule_info_for_team(team_name):
 # ====================================================
 # ATURAN TARGET PER BRAND
 # ====================================================
-TARGET_RULES = {
+DEFAULT_TARGET_RULES = {
     "Black Matcha K12": {"target_spg": 50, "target_team": 100},
     "D.Super 12": {"target_spg": 40, "target_team": 80},
     "D.76 Apel Royal": {"target_spg": 40, "target_team": 80},
     "D.76 Apel": {"target_spg": 30, "target_team": 60},
     "Djarum 76 Aksara": {"target_spg": 30, "target_team": 60},
-    "Black Matcha Siro": {
-        "target_spg": 40,
-        "target_team": 80,
-        "group": "Black_Siro_Kuro",
-    },
-    "Black Matcha Kuro": {
-        "target_spg": 40,
-        "target_team": 80,
-        "group": "Black_Siro_Kuro",
-    },
+    "Djarum Black Siro": {"target_spg": 40, "target_team": 80, "group": "Black_Siro_Kuro"},
+    "Djarum Black Kuro": {"target_spg": 40, "target_team": 80, "group": "Black_Siro_Kuro"},
 }
 
 
-def style_status_target(val):
-  if val == "Not Achieved":
-    return "color: #d32f2f; font-weight: bold;"
-  elif val == "Achieved":
-    return "color: #16a34a; font-weight: bold;"
-  return ""
+def load_target_rules():
+  if os.path.exists(MASTER_TARGET_FILE):
+    try:
+      with open(MASTER_TARGET_FILE, "r", encoding="utf-8") as f:
+        return json.load(f)
+    except Exception:
+      return DEFAULT_TARGET_RULES
+  return DEFAULT_TARGET_RULES
+
+
+def save_target_rules(rules):
+  with open(MASTER_TARGET_FILE, "w", encoding="utf-8") as f:
+    json.dump(rules, f, ensure_ascii=False, indent=2)
+
+
+# Inisialisasi variabel TARGET_RULES global
+TARGET_RULES = load_target_rules()
+
+
+def get_group_target(group_name, target_key, default_val):
+  rules = load_target_rules()
+  for brand, rule in rules.items():
+    if rule.get("group") == group_name and target_key in rule:
+      return rule[target_key]
+  return default_val
 
 
 # ====================================================
@@ -793,34 +805,34 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
   # --- TAMPILAN MASTER MEREK ROKOK ---
   elif st.session_state["admin_view"] == "Master_Brand":
     st.markdown("## 🚬 Master Data: Merek Rokok & Target")
-    st.caption(
-        "Kelola daftar merek rokok beserta aturan target omset per SPG dan"
-        " Team."
-    )
+    st.caption("Tambah atau hapus brand, dan ubah target per SPG maupun per Team.")
 
     current_brands = load_master_brands()
+    target_rules_data = load_target_rules()
 
     with st.form("form_tambah_brand"):
-      new_brand_name = st.text_input(
-          "Nama Merek Rokok Baru", placeholder="Contoh: Djarum Super Extra"
-      )
-      t_spg = st.number_input(
-          "Target per SPG (Bungkus)", min_value=1, value=30, step=1
-      )
-      t_team = st.number_input(
-          "Target per Team (Bungkus)", min_value=1, value=60, step=1
-      )
+      st.markdown("#### Tambah Merek Rokok & Target Baru")
+      new_brand_name = st.text_input("Nama Merek Rokok Baru", placeholder="Contoh: Djarum Super Extra")
+      t_spg = st.number_input("Target per SPG (Bungkus)", min_value=1, value=30, step=1)
+      t_team = st.number_input("Target per Team (Bungkus)", min_value=1, value=60, step=1)
+      is_grouped = st.checkbox("Masukkan ke Grup Gabungan Siro / Kuro?", value=False)
       btn_add_brand = st.form_submit_button("➕ Tambah Merek Rokok")
+
       if btn_add_brand:
         b_clean = new_brand_name.strip()
         if b_clean:
           if b_clean not in current_brands:
             current_brands.append(b_clean)
             save_master_brands(current_brands)
-            TARGET_RULES[b_clean] = {
+            
+            target_rules_data[b_clean] = {
                 "target_spg": int(t_spg),
                 "target_team": int(t_team),
             }
+            if is_grouped:
+              target_rules_data[b_clean]["group"] = "Black_Siro_Kuro"
+            save_target_rules(target_rules_data)
+
             st.success(f"✅ Merek rokok '{b_clean}' berhasil ditambahkan!")
             st.rerun()
           else:
@@ -829,29 +841,50 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
           st.warning("Mohon masukkan nama merek rokok.")
 
     st.markdown("---")
-    st.markdown("#### 📋 Daftar Merek Rokok & Aturan Target")
+    st.markdown("#### 📋 Daftar Merek Rokok & Pengaturan Target")
+
     for idx, b in enumerate(current_brands):
-      rule = TARGET_RULES.get(b, {"target_spg": 25, "target_team": 50})
-      col_b1, col_b2, col_b3 = st.columns([0.5, 0.3, 0.2])
-      with col_b1:
-        st.write(
-            f"**{idx+1}. {b}**\n- Target SPG: `{rule['target_spg']} bks`\n-"
-            f" Target Team: `{rule['target_team']} bks`"
-        )
-      with col_b2:
-        st.write("")
-      with col_b3:
-        if st.button("🗑️ Hapus", key=f"del_brand_{idx}"):
-          current_brands.pop(idx)
-          save_master_brands(current_brands)
-          st.success("Merek rokok berhasil dihapus!")
-          st.rerun()
+      rule = target_rules_data.get(b, {"target_spg": 25, "target_team": 50})
+      with st.expander(f"🚬 {b} (SPG: {rule.get('target_spg', 25)} bks | Team: {rule.get('target_team', 50)} bks)"):
+        with st.form(f"form_edit_target_{idx}"):
+          edit_tspg = st.number_input("Target per SPG (Bungkus)", min_value=1, value=int(rule.get("target_spg", 25)), key=f"tspg_{idx}")
+          edit_tteam = st.number_input("Target per Team (Bungkus)", min_value=1, value=int(rule.get("target_team", 50)), key=f"tteam_{idx}")
+          
+          has_group = "group" in rule and rule["group"] == "Black_Siro_Kuro"
+          edit_group = st.checkbox("Masuk Grup Gabungan Siro / Kuro", value=has_group, key=f"grp_{idx}")
+
+          col_ed1, col_ed2 = st.columns(2)
+          with col_ed1:
+            btn_save_edit = st.form_submit_button("💾 Simpan Perubahan Target")
+          with col_ed2:
+            btn_del_brand = st.form_submit_button("🗑️ Hapus Brand Ini")
+
+          if btn_save_edit:
+            target_rules_data[b] = {
+                "target_spg": int(edit_tspg),
+                "target_team": int(edit_tteam),
+            }
+            if edit_group:
+              target_rules_data[b]["group"] = "Black_Siro_Kuro"
+            save_target_rules(target_rules_data)
+            st.success(f"✅ Target brand '{b}' berhasil diperbarui!")
+            st.rerun()
+
+          if btn_del_brand:
+            current_brands.remove(b)
+            save_master_brands(current_brands)
+            if b in target_rules_data:
+              del target_rules_data[b]
+              save_target_rules(target_rules_data)
+            st.success(f"🗑️ Brand '{b}' berhasil dihapus!")
+            st.rerun()
 
     st.markdown("---")
     if st.button("⬅️ Kembali ke Dashboard"):
       st.session_state["admin_view"] = "Dashboard"
       st.rerun()
     st.stop()
+      
 
   # --- TAMPILAN MASTER LOKASI WARKOP ---
   elif st.session_state["admin_view"] == "Master_Lokasi":
@@ -1440,8 +1473,11 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
 
       def get_team_target(brand):
         if brand == "Black Siro & Kuro (Gabungan)":
-          return 80
-        return TARGET_RULES.get(brand, {"target_team": 50})["target_team"]
+          return get_group_target("Black_Siro_Kuro", "target_team", 80)
+        return TARGET_RULES.get(
+            brand,
+            {"target_team": 50},
+        ).get("target_team", 50)
 
       df_team_leaderboard["Target_Team"] = df_team_leaderboard[
           "Brand_Rokok"
@@ -2999,8 +3035,11 @@ if not df_user_rekap.empty:
 
   def get_spg_target(brand):
     if brand == "Black Siro & Kuro (Gabungan)":
-      return 40
-    return TARGET_RULES.get(brand, {"target_spg": 25})["target_spg"]
+      return get_group_target("Black_Siro_Kuro", "target_spg", 40)
+    return TARGET_RULES.get(
+        brand,
+        {"target_spg": 25},
+    ).get("target_spg", 25)
 
   df_eval_spg["Target_SPG"] = df_eval_spg["Brand_Rokok"].apply(get_spg_target)
 
