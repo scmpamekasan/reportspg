@@ -313,8 +313,8 @@ DEFAULT_BRANDS = [
     "Djarum Black Siro",
     "Djarum Black Kuro",
 ]
-DEFAULT_SPGS = ["Nanda", "Dewi", "Aci", "Ayu"]
-DEFAULT_PLATS = ["L 1234 ABC", "L 5678 XYZ"]
+DEFAULT_SPGS = ["Nanda"]
+DEFAULT_PLATS = ["L 1234 ABC"]
 
 
 def load_master_brands():
