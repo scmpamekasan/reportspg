@@ -338,41 +338,39 @@ def save_master_brands(brands):
 
 
 def load_master_team_brands():
-  # Ambil daftar brand terbaru secara dinamis dari master_brand_rokok.json
   current_brands = load_master_brands()
+  # Default awal jika file belum ada sama sekali
   default_teams = {f"Team SPG {i}": current_brands.copy() for i in range(1, 21)}
   
   if os.path.exists(MASTER_TEAM_BRAND_FILE):
     try:
       with open(MASTER_TEAM_BRAND_FILE, "r", encoding="utf-8") as f:
         data = json.load(f)
+        # Pastikan semua Team SPG 1-20 ada di dictionary tanpa menimpa pilihan user
         for i in range(1, 21):
           t_name = f"Team SPG {i}"
           if t_name not in data:
             data[t_name] = current_brands.copy()
-          else:
-            # Pastikan brand baru di master otomatis dimasukkan ke setiap team
-            for b in current_brands:
-              if b not in data[t_name]:
-                data[t_name].append(b)
         return data
     except Exception:
       return default_teams
-  return default_teams
+  else:
+    # Buat file otomatis saat pertama kali dijalankan jika belum ada
+    save_master_team_brands(default_teams)
+    return default_teams
 
 
 def save_master_team_brands(team_brands):
   try:
-    # Pastikan semua elemen di dalam dictionary berupa list murni (bukan tuple/set)
-    cleaned_data = {}
-    for team, brands in team_brands.items():
-      cleaned_data[str(team)] = [str(b).strip() for b in brands]
-
+    cleaned_data = {
+        str(team): [str(b).strip() for b in brands]
+        for team, brands in team_brands.items()
+    }
     with open(MASTER_TEAM_BRAND_FILE, "w", encoding="utf-8") as f:
       json.dump(cleaned_data, f, ensure_ascii=False, indent=2)
     return True
   except Exception as e:
-    st.error(f"Gagal menyimpan file `master_team_brand.json`: {e}")
+    st.error(f"❌ Gagal menyimpan ke `{MASTER_TEAM_BRAND_FILE}`: {e}")
     return False
       
 
