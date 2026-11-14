@@ -1089,6 +1089,120 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
       st.session_state["admin_logged_in"] = False
       st.rerun()
 
+  st.markdown("---")
+  st.markdown("#### 🌐 Ringkasan Cepat Data Masuk (All User)")
+
+  df_all_users = load_database()
+  df_all_supervisi = load_supervisi_database()
+
+  if not df_all_users.empty:
+    df_all_users["Waktu_Dt"] = pd.to_datetime(df_all_users["Waktu"], errors="coerce")
+    df_all_users["Tanggal"] = df_all_users["Waktu_Dt"].dt.strftime("%d-%m-%Y")
+    df_all_users = add_custom_week_columns(df_all_users, "Waktu_Dt")
+    df_all_users["Jumlah_Bungkus"] = pd.to_numeric(df_all_users["Jumlah_Bungkus"], errors="coerce").fillna(0)
+
+    today_dt = datetime.utcnow() + timedelta(hours=7)
+    today_str = today_dt.strftime("%d-%m-%Y")
+    current_month_str = today_dt.strftime("%m-%Y")
+    current_week_label, _ = get_custom_week_info(today_dt)
+
+    df_today = df_all_users[df_all_users["Tanggal"] == today_str].copy()
+    omset_hari_ini = int(df_today["Jumlah_Bungkus"].sum())
+    konsumen_hari_ini = len(df_today)
+
+    if not df_today.empty:
+      df_today_lb = df_today.groupby(["Tanggal", "Periode_Minggu", "Promotor", "Kota_Kab", "Brand_Rokok"]).agg(Total_Omset_Team=("Jumlah_Bungkus", "sum")).reset_index()
+      def clean_brand_team_lb(b):
+        b_lower = str(b).lower()
+        if "siro" in b_lower or "kuro" in b_lower:
+          return "Black Siro & Kuro (Gabungan)"
+        return b
+      df_today_lb["Brand_Rokok_Clean"] = df_today_lb["Brand_Rokok"].apply(clean_brand_team_lb)
+      df_today_lb = df_today_lb.groupby(["Tanggal", "Periode_Minggu", "Promotor", "Kota_Kab", "Brand_Rokok_Clean"]).agg(Total_Omset_Team=("Total_Omset_Team", "sum")).reset_index().rename(columns={"Brand_Rokok_Clean": "Brand_Rokok"})
+
+      def get_team_target_lb(brand):
+        if brand == "Black Siro & Kuro (Gabungan)":
+          return get_group_target("Black_Siro_Kuro", "target_team", 80)
+        return TARGET_RULES.get(brand, {"target_team": 50}).get("target_team", 50)
+
+      df_today_lb["Target_Team"] = df_today_lb["Brand_Rokok"].apply(get_team_target_lb)
+      target_hari_ini = int(df_today_lb["Target_Team"].sum())
+    else:
+      target_hari_ini = 100
+
+    if target_hari_ini <= 0:
+      target_hari_ini = 100
+
+    persen_pencapaian = int((omset_hari_ini / target_hari_ini) * 100) if target_hari_ini > 0 else 0
+
+    df_week = df_all_users[df_all_users["Periode_Minggu"] == current_week_label]
+    omset_minggu_ini = int(df_week["Jumlah_Bungkus"].sum())
+    konsumen_minggu_ini = len(df_week)
+
+    df_all_users["Bulan_Tahun"] = df_all_users["Waktu_Dt"].dt.strftime("%m-%Y")
+    df_month = df_all_users[df_all_users["Bulan_Tahun"] == current_month_str]
+    omset_bulan_ini = int(df_month["Jumlah_Bungkus"].sum())
+    konsumen_bulan_ini = len(df_month)
+
+    kpi_col1, kpi_col2, kpi_col3 = st.columns(3)
+    with kpi_col1:
+      st.markdown(f'<div class="dashboard-card"><div><div class="card-value">{omset_hari_ini:,} bks</div><div class="card-subtext">dari {target_hari_ini} target bks</div></div><div class="card-label">Omset Hari Ini</div></div>', unsafe_allow_html=True)
+    with kpi_col2:
+      bar_width = min(persen_pencapaian, 100)
+      st.markdown(f'<div class="dashboard-card"><div><div class="card-value-green">{persen_pencapaian}%</div><div class="progress-bar-container"><div class="progress-bar-fill" style="width: {bar_width}%;"></div></div></div><div class="card-label">Pencapaian Omset Hari Ini</div></div>', unsafe_allow_html=True)
+    with kpi_col3:
+      st.markdown(f'<div class="dashboard-card"><div><div class="card-value">{konsumen_hari_ini:,}</div><div class="card-subtext" style="opacity: 0;">-</div></div><div class="card-label">Konsumen Beli Hari Ini</div></div>', unsafe_allow_html=True)
+
+    kpi_col4, kpi_col5, kpi_col6 = st.columns(3)
+    with kpi_col4:
+      st.markdown(f'<div class="dashboard-card"><div><div class="card-value">{omset_minggu_ini:,} bks</div><div class="card-subtext">{konsumen_minggu_ini:,} Konsumen Minggu Ini</div></div><div class="card-label">Omset Minggu Ini</div></div>', unsafe_allow_html=True)
+    with kpi_col5:
+      st.markdown(f'<div class="dashboard-card"><div><div class="card-value">{omset_bulan_ini:,} bks</div><div class="card-subtext" style="opacity: 0;">-</div></div><div class="card-label">Omset Bulan Ini</div></div>', unsafe_allow_html=True)
+    with kpi_col6:
+      st.markdown(f'<div class="dashboard-card"><div><div class="card-value">{konsumen_bulan_ini:,}</div><div class="card-subtext" style="opacity: 0;">-</div></div><div class="card-label">Konsumen Beli Bulan Ini</div></div>', unsafe_allow_html=True)
+
+    all_weeks_admin = sorted(df_all_users["Periode_Minggu"].dropna().unique().tolist(), reverse=True)
+    all_dates_admin = sorted(df_all_users["Tanggal"].dropna().unique().tolist(), reverse=True)
+    all_teams_admin = sorted(df_all_users["Promotor"].dropna().unique().tolist())
+    all_spgs_admin = sorted(df_all_users["Nama_SPG"].dropna().unique().tolist())
+
+    st.markdown("---")
+    st.markdown("### 🏆 Leaderboard Team SPG (Berdasarkan Target Team)")
+    col_lb_w, col_lb_tgl, col_lb_team = st.columns(3)
+    with col_lb_w:
+      filter_lb_week = st.multiselect("Filter Periode Minggu (Leaderboard)", options=all_weeks_admin, default=all_weeks_admin, key="admin_lb_week")
+    with col_lb_tgl:
+      filter_lb_tgl = st.multiselect("Filter Tanggal (Leaderboard)", options=all_dates_admin, default=all_dates_admin, key="admin_lb_tgl")
+    with col_lb_team:
+      filter_lb_team = st.multiselect("Filter Team SPG (Leaderboard)", options=all_teams_admin, default=all_teams_admin, key="admin_lb_team")
+
+    df_lb_filtered = df_all_users.copy()
+    if filter_lb_week:
+      df_lb_filtered = df_lb_filtered[df_lb_filtered["Periode_Minggu"].isin(filter_lb_week)]
+    if filter_lb_tgl:
+      df_lb_filtered = df_lb_filtered[df_lb_filtered["Tanggal"].isin(filter_lb_tgl)]
+    if filter_lb_team:
+      df_lb_filtered = df_lb_filtered[df_lb_filtered["Promotor"].isin(filter_lb_team)]
+
+    if not df_lb_filtered.empty:
+      df_team_leaderboard = df_lb_filtered.groupby(["Tanggal", "Periode_Minggu", "Promotor", "Kota_Kab", "Brand_Rokok"]).agg(Total_Omset_Team=("Jumlah_Bungkus", "sum"), Total_Konsumen_Beli=("Nama_Konsumen", "count")).reset_index()
+      def clean_brand_team(b):
+        b_lower = str(b).lower()
+        if "siro" in b_lower or "kuro" in b_lower:
+          return "Black Siro & Kuro (Gabungan)"
+        return b
+      df_team_leaderboard["Brand_Rokok_Clean"] = df_team_leaderboard["Brand_Rokok"].apply(clean_brand_team)
+      df_team_leaderboard = df_team_leaderboard.groupby(["Tanggal", "Periode_Minggu", "Promotor", "Kota_Kab", "Brand_Rokok_Clean"]).agg(Total_Omset_Team=("Total_Omset_Team", "sum"), Total_Konsumen_Beli=("Total_Konsumen_Beli", "sum")).reset_index().rename(columns={"Brand_Rokok_Clean": "Brand_Rokok"})
+
+      def get_team_target(brand):
+        if brand == "Black Siro & Kuro (Gabungan)":
+          return get_group_target("Black_Siro_Kuro", "target_team", 80)
+        return TARGET_RULES.get(brand, {"target_team": 50}).get("target_team", 50)
+
+      df_team_leaderboard["Target_Team"] = df_team_leaderboard["Brand_Rokok"].apply(get_team_target)
+      df_team_leaderboard["Status_Target_Team"] = df_team_leaderboard.apply(lambda r: "Achieved" if r["Total_Omset_Team"] >= r["Target_Team"] else "Not Achieved", axis=1)
+      st.dataframe(df_team_leaderboard.style.map(style_status_target, subset=["Status_Target_Team"]), use_container_width=True)
+
   st.stop()
 
 # ====================================================
@@ -1204,7 +1318,6 @@ if is_inside_geofence:
 else:
   st.error(f"🚨 **Peringatan Lock GPS:** Posisi Anda berada di luar wilayah operasional {st.session_state['kota_kab']}.")
 
-# Validasi kecamatan dari Jadwal SPG.xlsx
 df_jadwal_raw = load_jadwal_spg()
 daftar_kecamatan_terjadwal = []
 if not df_jadwal_raw.empty:
