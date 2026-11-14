@@ -3072,6 +3072,23 @@ if not df_user_rekap.empty:
       use_container_width=True,
   )
 
+    # ====================================================
+    # ATURAN TARGET & FUNGSI BANTUAN
+    # ====================================================
+    ...
+    def load_target_rules():
+    # (isi fungsi load target rules)
+    ...
+
+    def style_status_target(val):
+      if val == "Not Achieved":
+        return "color: #d32f2f; font-weight: bold;"
+      elif val == "Achieved":
+        return "color: #16a34a; font-weight: bold;"
+      return ""
+
+
+    
   st.markdown("---")
   st.markdown("#### 📑 Log Detail Transaksi & Pengaturan")
 
