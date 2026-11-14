@@ -475,12 +475,8 @@ def _is_same_team_reference(team_cell, team_name):
     if not team_cell or team_cell == "nan" or team_cell == "none":
         return False
 
+    # Pencocokan persis secara utuh (Exact match) agar tidak tercampur
     if team_cell == team_name:
-        return True
-
-    team_name_clean = "".join(ch for ch in team_name if ch.isdigit())
-    cell_num = "".join(ch for ch in team_cell if ch.isdigit())
-    if team_name_clean and cell_num and team_name_clean == cell_num:
         return True
 
     return False
@@ -1175,7 +1171,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
             st.warning("File `Jadwal SPG.xlsx` kosong atau tidak ditemukan.")
 
         st.markdown("---")
-        if st.button("⬅️ Kembali to Dashboard"):
+        if st.button("⬅️ Kembali ke Dashboard"):
             st.session_state["admin_view"] = "Dashboard"
             st.rerun()
         st.stop()
