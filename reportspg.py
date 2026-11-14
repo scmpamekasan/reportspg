@@ -3100,16 +3100,34 @@ if not df_user_rekap.empty:
     # ====================================================
 
   def load_target_rules():
-    # (isi fungsi load target rules)
-    ...
+    if os.path.exists(MASTER_TARGET_FILE):
+      try:
+        with open(MASTER_TARGET_FILE, "r", encoding="utf-8") as f:
+          return json.load(f)
+      except Exception:
+        return DEFAULT_TARGET_RULES
+    return DEFAULT_TARGET_RULES
 
+  def save_target_rules(rules):
+    with open(MASTER_TARGET_FILE, "w", encoding="utf-8") as f:
+      json.dump(rules, f, ensure_ascii=False, indent=2)
+
+  TARGET_RULES = load_target_rules()
+
+  def get_group_target(group_name, target_key, default_val):
+    rules = load_target_rules()
+    for brand, rule in rules.items():
+      if rule.get("group") == group_name and target_key in rule:
+        return rule[target_key]
+    return default_val
+
+# PASTIKAN FUNGSI INI BERADA DI BAGIAN ATAS:
   def style_status_target(val):
-      if val == "Not Achieved":
-        return "color: #d32f2f; font-weight: bold;"
-      elif val == "Achieved":
-        return "color: #16a34a; font-weight: bold;"
-      return ""
-
+    if val == "Not Achieved":
+      return "color: #d32f2f; font-weight: bold;"
+    elif val == "Achieved":
+      return "color: #16a34a; font-weight: bold;"
+    return ""
 
     
   st.markdown("---")
