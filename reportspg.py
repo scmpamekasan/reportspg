@@ -3099,11 +3099,12 @@ if not df_user_rekap.empty:
     # ATURAN TARGET & FUNGSI BANTUAN
     # ====================================================
     ...
-    def load_target_rules():
+
+  def load_target_rules():
     # (isi fungsi load target rules)
     ...
 
-    def style_status_target(val):
+  def style_status_target(val):
       if val == "Not Achieved":
         return "color: #d32f2f; font-weight: bold;"
       elif val == "Achieved":
