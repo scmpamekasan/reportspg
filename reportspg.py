@@ -170,6 +170,7 @@ MASTER_LOKASI_FILE = "Master WarkopLKK.xlsx"
 MASTER_SPG_FILE = "master_nama_spg.json"
 MASTER_TEAM_BRAND_FILE = "master_team_brand.json"
 MASTER_PLAT_FILE = "master_plat_kendaraan.json"
+MASTER_TEAM_NAME_FILE = "master_nama_team.json"
 JADWAL_SPG_FILE = "Jadwal SPG.xlsx"
 
 EXPECTED_COLUMNS = [
@@ -300,7 +301,7 @@ def load_master_wilayah(kota):
         return None
 
 # ====================================================
-# MASTER BRAND / TARGET / TEAM / PLAT
+# MASTER BRAND / TARGET / TEAM / PLAT / NAMA TEAM
 # ====================================================
 DEFAULT_BRANDS = [
     "D.Super 12",
@@ -313,6 +314,32 @@ DEFAULT_BRANDS = [
 ]
 DEFAULT_SPGS = ["Nanda"]
 DEFAULT_PLATS = ["L 1234 ABC"]
+
+def load_master_team_names():
+    default_teams = {f"Team SPG {i}": f"Team SPG {i}" for i in range(1, 21)}
+    if os.path.exists(MASTER_TEAM_NAME_FILE):
+        try:
+            with open(MASTER_TEAM_NAME_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                for i in range(1, 21):
+                    key = f"Team SPG {i}"
+                    if key not in data:
+                        data[key] = key
+                return data
+        except Exception:
+            return default_teams
+    else:
+        save_master_team_names(default_teams)
+        return default_teams
+
+def save_master_team_names(team_names_dict):
+    try:
+        with open(MASTER_TEAM_NAME_FILE, "w", encoding="utf-8") as f:
+            json.dump(team_names_dict, f, ensure_ascii=False, indent=2)
+        return True
+    except Exception as e:
+        st.error(f"Gagal menyimpan master nama team: {e}")
+        return False
 
 def load_master_brands():
     if os.path.exists(MASTER_BRAND_FILE):
@@ -334,14 +361,16 @@ def save_master_brands(brands):
 
 def load_master_team_brands():
     current_brands = load_master_brands()
-    default_teams = {f"Team SPG {i}": current_brands.copy() for i in range(1, 21)}
+    team_map = load_master_team_names()
+    default_teams = {team_map.get(f"Team SPG {i}", f"Team SPG {i}"): current_brands.copy() for i in range(1, 21)}
     if os.path.exists(MASTER_TEAM_BRAND_FILE):
         try:
             with open(MASTER_TEAM_BRAND_FILE, "r", encoding="utf-8") as f:
                 data = json.load(f)
                 for i in range(1, 21):
-                    t_name = f"Team SPG {i}"
-                    if t_name not in data:
+                    t_key = f"Team SPG {i}"
+                    t_name = team_map.get(t_key, t_key)
+                    if t_name not in data and t_key not in data:
                         data[t_name] = current_brands.copy()
                 return data
         except Exception:
@@ -450,16 +479,9 @@ def _is_same_team_reference(team_cell, team_name):
     if team_cell == team_name:
         return True
 
-    # Misal "Team SPG 5" vs "Team SPG 5"
-    if team_name.startswith("team spg"):
-        team_name_clean = "".join(ch for ch in team_name if ch.isdigit())
-        cell_num = "".join(ch for ch in team_cell if ch.isdigit())
-        return bool(team_name_clean and cell_num and team_name_clean == cell_num)
-
-    # Cek "5" vs "team spg 5"
+    team_name_clean = "".join(ch for ch in team_name if ch.isdigit())
     cell_num = "".join(ch for ch in team_cell if ch.isdigit())
-    team_num = "".join(ch for ch in team_name if ch.isdigit())
-    if team_num and cell_num and team_num == cell_num:
+    if team_name_clean and cell_num and team_name_clean == cell_num:
         return True
 
     return False
@@ -469,7 +491,6 @@ def get_schedule_info_for_team(team_name):
     if df_j.empty:
         return False, "Tidak Ada Jadwal Team Tersebut Untuk Hari Ini", "Surabaya", [], pd.DataFrame()
 
-    # Deteksi kolom kota/kecamatan secara fleksibel
     kota_col = next((c for c in df_j.columns if "kota" in str(c).lower()), None)
     kec_col = next((c for c in df_j.columns if "kecamatan" in str(c).lower()), None)
 
@@ -617,6 +638,9 @@ if not st.session_state["logged_in"]:
             if st.button("🏠 Dashboard Utama", use_container_width=True, type="primary"):
                 st.session_state["admin_view"] = "Dashboard"
                 st.rerun()
+            if st.button("🏷️ Master Nama Team (1 - 20)", use_container_width=True):
+                st.session_state["admin_view"] = "Master_Nama_Team"
+                st.rerun()
             if st.button("👥 Master Team & Brand", use_container_width=True):
                 st.session_state["admin_view"] = "Master_Team"
                 st.rerun()
@@ -652,8 +676,38 @@ if not st.session_state["logged_in"]:
 # ====================================================
 if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
 
+    # --- MASTER NAMA TEAM ---
+    if st.session_state["admin_view"] == "Master_Nama_Team":
+        st.markdown("## 🏷️ Master Data: Nama Team (1 - 20)")
+        st.caption("Ubah dan sesuaikan nama alias untuk Team SPG 1 sampai 20. Perubahan akan otomatis terhubung ke menu alokasi brand dan login.")
+
+        team_names_map = load_master_team_names()
+
+        with st.form("form_edit_nama_team"):
+            st.markdown("#### Edit Nama Team")
+            updated_names = {}
+            
+            for i in range(1, 21):
+                key = f"Team SPG {i}"
+                current_val = team_names_map.get(key, key)
+                new_val = st.text_input(f"Nama untuk `{key}`", value=current_val, key=f"input_team_name_{i}")
+                updated_names[key] = new_val.strip() if new_val.strip() else key
+
+            btn_save_team_names = st.form_submit_button("💾 Simpan Perubahan Nama Team", type="primary")
+
+            if btn_save_team_names:
+                if save_master_team_names(updated_names):
+                    st.success("✅ Perubahan nama team berhasil disimpan dan langsung terhubung ke seluruh sistem!")
+                    st.rerun()
+
+        st.markdown("---")
+        if st.button("⬅️ Kembali ke Dashboard"):
+            st.session_state["admin_view"] = "Dashboard"
+            st.rerun()
+        st.stop()
+
     # --- MASTER PLAT ---
-    if st.session_state["admin_view"] == "Master_Plat":
+    elif st.session_state["admin_view"] == "Master_Plat":
         st.markdown("## 🚗 Master Data: Plat Nomor Kendaraan Operasional")
         st.caption("Tambah atau hapus daftar plat nomor kendaraan operasional secara fleksibel.")
 
@@ -703,10 +757,12 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
 
         all_available_brands = load_master_brands()
         team_brands_dict = load_master_team_brands()
+        team_name_mapping = load_master_team_names()
+        team_options = [team_name_mapping.get(f"Team SPG {i}", f"Team SPG {i}") for i in range(1, 21)]
 
         selected_team_config = st.selectbox(
             "Pilih Team SPG untuk Konfigurasi Brand",
-            options=[f"Team SPG {i}" for i in range(1, 21)],
+            options=team_options,
             key="sb_pilih_team_master",
         )
 
@@ -734,8 +790,9 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
         fresh_team_brands = load_master_team_brands()
         summary_list = []
         for i in range(1, 21):
-            t_name = f"Team SPG {i}"
-            b_list = fresh_team_brands.get(t_name, [])
+            t_key = f"Team SPG {i}"
+            t_name = team_name_mapping.get(t_key, t_key)
+            b_list = fresh_team_brands.get(t_name, fresh_team_brands.get(t_key, []))
             summary_list.append({
                 "Team": t_name,
                 "Brand Diizinkan": ", ".join(b_list) if b_list else "(Belum ada brand)",
@@ -941,7 +998,6 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
         if df_jadwal.empty:
             st.warning("File `Jadwal SPG.xlsx` kosong atau tidak ditemukan.")
         else:
-            # Deteksi kolom tanggal
             date_columns = []
             for column in df_jadwal.columns:
                 try:
@@ -960,7 +1016,6 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
                 if kota_col is None or kec_col is None:
                     st.error("Kolom Kota/Kecamatan tidak ditemukan di file jadwal. Pastikan header file sesuai.")
                 else:
-                    # Tampilkan versi panjang agar lebih mudah dibaca
                     melted = df_jadwal.melt(
                         id_vars=meta_columns,
                         value_vars=date_columns,
@@ -1197,11 +1252,11 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
     st.markdown("#### 📦 Master Data")
     col_m1, col_m2, col_m3 = st.columns(3)
     with col_m1:
+        if st.button("🏷️ Master Nama Team\nAtur nama team 1 - 20", use_container_width=True):
+            st.session_state["admin_view"] = "Master_Nama_Team"
+            st.rerun()
         if st.button("👥 Master Team & Brand\nAtur brand rokok per team", use_container_width=True):
             st.session_state["admin_view"] = "Master_Team"
-            st.rerun()
-        if st.button("👩‍💼 Nama SPG\nKelola daftar SPG", use_container_width=True):
-            st.session_state["admin_view"] = "Master_SPG"
             st.rerun()
     with col_m2:
         if st.button("🚗 Master Plat Kendaraan\nTambah & hapus plat mobil", use_container_width=True):
@@ -1785,7 +1840,8 @@ if not st.session_state["logged_in"]:
         st.markdown("---")
 
         with st.container():
-            list_team = [f"Team SPG {i}" for i in range(1, 21)]
+            team_name_mapping = load_master_team_names()
+            list_team = [team_name_mapping.get(f"Team SPG {i}", f"Team SPG {i}") for i in range(1, 21)]
             pilihan_user = st.selectbox(
                 "👤 Pilih Nama Team",
                 list_team,
@@ -1923,7 +1979,7 @@ else:
     )
 
 # ====================================================
-# VALIDASI JADWAL SPG DARI EXCEL (SEBAGAI ACUAN UTAMA)
+# VALIDASI JADWAL SPG DARI EXCEL
 # ====================================================
 schedule_ok, _, _, daftar_kecamatan_terjadwal, _ = get_schedule_info_for_team(st.session_state["user_spg"])
 
@@ -1940,7 +1996,6 @@ kecamatan_pilihan = st.selectbox(
     help="Kecamatan difilter otomatis sesuai penugasan jadwal hari ini yang dikelola di menu admin.",
 )
 
-# Filter warkop/LKK
 df_master_excel = load_master_lokasi_excel()
 filtered_df_warkop = pd.DataFrame()
 
@@ -1955,8 +2010,6 @@ if not df_master_excel.empty:
             == str(kecamatan_pilihan).strip().lower()
         )
         filtered_df_warkop = df_master_excel[mask]
-        # Jika tidak ada data untuk kecamatan tersebut, tetap tampilkan data kecamatan lain
-        # sebagai fallback agar form tetap bisa dipakai.
         if filtered_df_warkop.empty:
             filtered_df_warkop = df_master_excel.copy()
 
