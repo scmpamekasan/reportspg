@@ -310,8 +310,8 @@ DEFAULT_BRANDS = [
     "D.76 Apel Royal",
     "Black Matcha K12",
     "Djarum 76 Aksara",
-    "Djarum Black Siro",
-    "Djarum Black Kuro",
+    "Black Matcha Siro",
+    "Black Matcha Kuro",
 ]
 DEFAULT_SPGS = ["Nanda"]
 DEFAULT_PLATS = ["L 1234 ABC"]
@@ -328,12 +328,20 @@ def load_master_brands():
 
 
 def save_master_brands(brands):
-  with open(MASTER_BRAND_FILE, "w", encoding="utf-8") as f:
-    json.dump(brands, f, ensure_ascii=False, indent=2)
+  try:
+    with open(MASTER_BRAND_FILE, "w", encoding="utf-8") as f:
+      json.dump(brands, f, ensure_ascii=False, indent=2)
+    return True
+  except Exception as e:
+    st.error(f"Gagal menyimpan file master_brand_rokok.json: {e}")
+    return False
 
 
 def load_master_team_brands():
-  default_teams = {f"Team SPG {i}": DEFAULT_BRANDS.copy() for i in range(1, 21)}
+  # Ambil daftar brand terbaru secara dinamis dari master_brand_rokok.json
+  current_brands = load_master_brands()
+  default_teams = {f"Team SPG {i}": current_brands.copy() for i in range(1, 21)}
+  
   if os.path.exists(MASTER_TEAM_BRAND_FILE):
     try:
       with open(MASTER_TEAM_BRAND_FILE, "r", encoding="utf-8") as f:
@@ -341,7 +349,12 @@ def load_master_team_brands():
         for i in range(1, 21):
           t_name = f"Team SPG {i}"
           if t_name not in data:
-            data[t_name] = DEFAULT_BRANDS.copy()
+            data[t_name] = current_brands.copy()
+          else:
+            # Pastikan brand baru di master otomatis dimasukkan ke setiap team
+            for b in current_brands:
+              if b not in data[t_name]:
+                data[t_name].append(b)
         return data
     except Exception:
       return default_teams
@@ -349,9 +362,14 @@ def load_master_team_brands():
 
 
 def save_master_team_brands(team_brands):
-  with open(MASTER_TEAM_BRAND_FILE, "w", encoding="utf-8") as f:
-    json.dump(team_brands, f, ensure_ascii=False, indent=2)
-
+  try:
+    with open(MASTER_TEAM_BRAND_FILE, "w", encoding="utf-8") as f:
+      json.dump(team_brands, f, ensure_ascii=False, indent=2)
+    return True
+  except Exception as e:
+    st.error(f"Gagal menyimpan file master_team_brand.json: {e}. Periksa izin folder.")
+    return False
+      
 
 def load_master_plat_kendaraan():
   if os.path.exists(MASTER_PLAT_FILE):
@@ -485,12 +503,12 @@ TARGET_RULES = {
     "D.76 Apel Royal": {"target_spg": 40, "target_team": 80},
     "D.76 Apel": {"target_spg": 30, "target_team": 60},
     "Djarum 76 Aksara": {"target_spg": 30, "target_team": 60},
-    "Djarum Black Siro": {
+    "Black Matcha Siro": {
         "target_spg": 40,
         "target_team": 80,
         "group": "Black_Siro_Kuro",
     },
-    "Djarum Black Kuro": {
+    "Black Matcha Kuro": {
         "target_spg": 40,
         "target_team": 80,
         "group": "Black_Siro_Kuro",
@@ -665,39 +683,47 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
         " (Team 1 sampai 20)."
     )
 
-    team_brands_dict = load_master_team_brands()
     all_available_brands = load_master_brands()
+    team_brands_dict = load_master_team_brands()
 
     selected_team_config = st.selectbox(
         "Pilih Team SPG untuk Konfigurasi Brand",
         options=[f"Team SPG {i}" for i in range(1, 21)],
+        key="selectbox_config_team_spg"
     )
 
     current_assigned_brands = team_brands_dict.get(
         selected_team_config, all_available_brands
     )
 
+    valid_default_brands = [
+        b for b in current_assigned_brands if b in all_available_brands
+    ]
+
     with st.form("form_config_team_brand"):
       st.markdown(f"#### Alokasi Merek untuk `{selected_team_config}`")
+      
       selected_brands_input = st.multiselect(
           "Pilih Brand Rokok yang Diizinkan",
           options=all_available_brands,
-          default=[
-              b for b in current_assigned_brands if b in all_available_brands
-          ],
+          default=valid_default_brands,
+          key="multiselect_team_brands_input"
       )
+      
       btn_save_team_brand = st.form_submit_button(
           "💾 Simpan Alokasi Brand Team"
       )
 
       if btn_save_team_brand:
         team_brands_dict[selected_team_config] = selected_brands_input
-        save_master_team_brands(team_brands_dict)
-        st.success(
-            f"✅ Alokasi brand rokok untuk **{selected_team_config}** berhasil"
-            " disimpan!"
-        )
-        st.rerun()
+        success_save = save_master_team_brands(team_brands_dict)
+        
+        if success_save:
+          st.success(
+              f"✅ Alokasi brand rokok untuk **{selected_team_config}** berhasil"
+              " disimpan!"
+          )
+          st.rerun()
 
     st.markdown("---")
     st.markdown("#### 📋 Ringkasan Alokasi Brand Seluruh Team (1 - 20)")
@@ -715,10 +741,11 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
     st.dataframe(pd.DataFrame(summary_list), use_container_width=True)
 
     st.markdown("---")
-    if st.button("⬅️ Kembali ke Dashboard"):
+    if st.button("⬅️ Kembali ke Dashboard", key="btn_back_from_master_team"):
       st.session_state["admin_view"] = "Dashboard"
       st.rerun()
     st.stop()
+      
 
   # --- TAMPILAN MASTER NAMA SPG ---
   elif st.session_state["admin_view"] == "Master_SPG":
