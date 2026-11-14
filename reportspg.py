@@ -431,15 +431,6 @@ def load_jadwal_spg():
   return pd.DataFrame()
 
 
-def save_jadwal_spg(df_jadwal):
-  try:
-    df_jadwal.to_excel(JADWAL_SPG_FILE, index=False)
-    return True
-  except Exception as e:
-    st.error(f"Gagal menyimpan file Jadwal SPG: {e}")
-    return False
-
-
 def load_master_spgs():
   if os.path.exists(MASTER_SPG_FILE):
     try:
@@ -623,9 +614,6 @@ if not st.session_state["logged_in"]:
       ):
         st.session_state["admin_view"] = "Dashboard"
         st.rerun()
-      if st.button("📅 Monitoring Jadwal Harian", use_container_width=True):
-        st.session_state["admin_view"] = "Monitoring_Jadwal"
-        st.rerun()
       if st.button("👥 Master Team & Brand", use_container_width=True):
         st.session_state["admin_view"] = "Master_Team"
         st.rerun()
@@ -658,81 +646,8 @@ if not st.session_state["logged_in"]:
 # ====================================================
 if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
 
-  # --- TAMPILAN MONITORING JADWAL HARIAN & BRAND (DENGAN FILTER MINGGUAN & TABLE EDITOR) ---
-  if st.session_state["admin_view"] == "Monitoring_Jadwal":
-    st.markdown("## 📅 Menu Monitoring Jadwal Team & Brand Per Hari")
-    st.caption("Pantau dan edit langsung jadwal penugasan team, wilayah, kecamatan, serta alokasi brand per hari berdasarkan filter mingguan.")
-
-    df_jadwal_mon = load_jadwal_spg()
-    if not df_jadwal_mon.empty:
-      # Deteksi kolom tanggal pada excel jadwal
-      date_cols_jadwal = []
-      for col in df_jadwal_mon.columns:
-        try:
-          parsed_d = pd.to_datetime(col)
-          date_cols_jadwal.append(col)
-        except Exception:
-          continue
-
-      # Filter Mingguan berdasarkan kolom tanggal yang terdeteksi di jadwal
-      if date_cols_jadwal:
-        # Buat mapping tanggal ke Periode Minggu
-        list_all_weeks_j = []
-        date_to_week_map = {}
-        for dc in date_cols_jadwal:
-          p_lbl, _ = get_custom_week_info(dc)
-          date_to_week_map[dc] = p_lbl
-          if p_lbl not in list_all_weeks_j:
-            list_all_weeks_j.append(p_lbl)
-
-        selected_week_mon = st.selectbox(
-            "Filter Berdasarkan Periode Minggu (Jadwal)",
-            options=sorted(list_all_weeks_j, reverse=True),
-            key="sb_mon_jadwal_week"
-        )
-
-        # Saring kolom tanggal yang masuk ke minggu terpilih
-        filtered_date_cols = [dc for dc in date_cols_jadwal if date_to_week_map[dc] == selected_week_mon]
-        
-        # Kolom non-tanggal (seperti Team/Promotor, Kota, Kecamatan, dll) dipertahankan di depan
-        fixed_cols = [c for c in df_jadwal_mon.columns if c not in date_cols_jadwal]
-        cols_to_display = fixed_cols + filtered_date_cols
-
-        st.markdown(f"#### 📋 Tabel Jadwal Interaktif (`{selected_week_mon}`)")
-        st.caption("Anda dapat mengedit langsung isi sel jadwal pada tabel di bawah ini, lalu klik tombol Simpan Perubahan.")
-
-        edited_jadwal_df = st.data_editor(
-            df_jadwal_mon[cols_to_display],
-            num_rows="dynamic",
-            use_container_width=True,
-            key="editor_monitoring_jadwal"
-        )
-
-        col_mj1, col_mj2 = st.columns(2)
-        with col_mj1:
-          if st.button("💾 Simpan Perubahan Jadwal", type="primary", use_container_width=True):
-            # Gabungkan kembali kolom yang diedit ke dataframe asli jika ada kolom lain
-            for col in edited_jadwal_df.columns:
-              df_jadwal_mon[col] = edited_jadwal_df[col]
-            if save_jadwal_spg(df_jadwal_mon):
-              st.success("✅ Perubahan Jadwal SPG berhasil disimpan ke `Jadwal SPG.xlsx`!")
-              st.rerun()
-        with col_mj2:
-          if st.button("🔄 Refresh Data Jadwal", use_container_width=True):
-            st.rerun()
-      else:
-        st.warning("Tidak ditemukan kolom berformat tanggal pada file `Jadwal SPG.xlsx`.")
-    else:
-      st.warning("File `Jadwal SPG.xlsx` kosong atau belum tersedia.")
-
-    st.markdown("---")
-    if st.button("⬅️ Kembali ke Dashboard", key="btn_back_mon_jadwal"):
-      st.session_state["admin_view"] = "Dashboard"
-      st.rerun()
-    st.stop()
-
   # --- TAMPILAN MASTER PLAT KENDARAAN (TAMBAH & HAPUS FLEKSIBEL) ---
-  elif st.session_state["admin_view"] == "Master_Plat":
+  if st.session_state["admin_view"] == "Master_Plat":
     st.markdown("## 🚗 Master Data: Plat Nomor Kendaraan Operasional")
     st.caption(
         "Tambah atau hapus daftar plat nomor kendaraan operasional secara"
@@ -1318,28 +1233,22 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
       st.rerun()
 
   st.markdown("---")
-  st.markdown("#### 📈 Analitik, Jadwal & Pemetaan")
-  col_a1, col_a2, col_a3, col_a4 = st.columns(4)
+  st.markdown("#### 📈 Analitik & Pemetaan")
+  col_a1, col_a2, col_a3 = st.columns(3)
   with col_a1:
-    if st.button(
-        "📅 Monitoring Jadwal\nTeam & Brand Per Hari", use_container_width=True, type="primary"
-    ):
-      st.session_state["admin_view"] = "Monitoring_Jadwal"
-      st.rerun()
-  with col_a2:
     if st.button(
         "📊 Analitik Lapangan\nDemografi & Kecamatan", use_container_width=True
     ):
       st.session_state["admin_view"] = "Analitik"
       st.rerun()
-  with col_a3:
+  with col_a2:
     if st.button(
         "🗺️ Peta Rute All User\nFilter Team/SPG/Tanggal",
         use_container_width=True,
     ):
       st.session_state["admin_view"] = "Peta_Rute"
       st.rerun()
-  with col_a4:
+  with col_a3:
     if st.button("⬅️ Keluar Admin", use_container_width=True):
       st.session_state["admin_logged_in"] = False
       st.rerun()
@@ -3234,7 +3143,7 @@ if not df_user_rekap.empty:
   with pd.ExcelWriter(output, engine="openpyxl") as writer:
     df_eval_sub_excel = df_eval_spg
     df_eval_sub_excel.to_excel(
-        writer, index=selectbox_sheet := "Evaluasi Harian SPG"
+        writer, index=False, sheet_name="Evaluasi Harian SPG"
     )
     df_user_rekap_filtered.drop(
         columns=["Waktu_Dt"], errors="ignore"
