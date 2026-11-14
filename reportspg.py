@@ -692,51 +692,45 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
     selected_team_config = st.selectbox(
         "Pilih Team SPG untuk Konfigurasi Brand",
         options=[f"Team SPG {i}" for i in range(1, 21)],
-        key="selectbox_config_team_spg"
+        key="sb_pilih_team_master",
     )
 
-    current_assigned_brands = team_brands_dict.get(
-        selected_team_config, all_available_brands
-    )
-
-    valid_default_brands = [
+    # Ambil daftar brand khusus untuk team yang sedang dipilih
+    current_assigned_brands = team_brands_dict.get(selected_team_config, [])
+    valid_defaults = [
         b for b in current_assigned_brands if b in all_available_brands
     ]
 
-    with st.form("form_config_team_brand"):
+    with st.form(key=f"form_config_{selected_team_config}"):
       st.markdown(f"#### Alokasi Merek untuk `{selected_team_config}`")
-      
       selected_brands_input = st.multiselect(
           "Pilih Brand Rokok yang Diizinkan",
           options=all_available_brands,
-          default=valid_default_brands,
-          key="multiselect_team_brands_input"
+          default=valid_defaults,
+          key=f"ms_brands_{selected_team_config}",
       )
-      
       btn_save_team_brand = st.form_submit_button(
           "💾 Simpan Alokasi Brand Team"
       )
 
       if btn_save_team_brand:
-        # Ambil dictionary terbaru, perbarui data team yang dipilih
         team_brands_dict[selected_team_config] = selected_brands_input
-        
-        # Panggil fungsi simpan yang sudah dibersihkan
-        success_save = save_master_team_brands(team_brands_dict)
-        
-        if success_save:
+        if save_master_team_brands(team_brands_dict):
           st.success(
               f"✅ Alokasi brand rokok untuk **{selected_team_config}** berhasil"
               " disimpan!"
           )
           st.rerun()
-            
+
     st.markdown("---")
     st.markdown("#### 📋 Ringkasan Alokasi Brand Seluruh Team (1 - 20)")
+    
+    # Muat ulang langsung dari file agar tabel ringkasan 100% sesuai isi file JSON
+    fresh_team_brands = load_master_team_brands()
     summary_list = []
     for i in range(1, 21):
       t_name = f"Team SPG {i}"
-      b_list = team_brands_dict.get(t_name, [])
+      b_list = fresh_team_brands.get(t_name, [])
       summary_list.append({
           "Team": t_name,
           "Brand Diizinkan": ", ".join(b_list)
@@ -747,10 +741,11 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
     st.dataframe(pd.DataFrame(summary_list), use_container_width=True)
 
     st.markdown("---")
-    if st.button("⬅️ Kembali ke Dashboard", key="btn_back_from_master_team"):
+    if st.button("⬅️ Kembali ke Dashboard", key="btn_back_master_team"):
       st.session_state["admin_view"] = "Dashboard"
       st.rerun()
     st.stop()
+      
       
 
   # --- TAMPILAN MASTER NAMA SPG ---
