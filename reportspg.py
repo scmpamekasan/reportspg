@@ -203,7 +203,8 @@ def get_custom_week_info(dt):
   else:
     fri_date = d + timedelta(days=(4 - wd))
   _, iso_w, _ = fri_date.isocalendar()
-  return f"Minggu ke-{iso_w}", iso_w
+  # Mengembalikan angka minggu saja (misal: "47") dan iso_w integer
+  return str(iso_w), iso_w
 
 
 def add_custom_week_columns(df, date_col="Waktu_Dt"):
@@ -213,7 +214,7 @@ def add_custom_week_columns(df, date_col="Waktu_Dt"):
   periods = []
   for val in df[date_col]:
     p_label, _ = get_custom_week_info(val)
-    periods.append(p_label)
+    periods.append(f"Minggu ke-{p_label}" if p_label != "-" else "-")
   df["Periode_Minggu"] = periods
   return df
 
@@ -603,7 +604,7 @@ if not st.session_state["logged_in"]:
 # ====================================================
 if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
 
-  # --- TAMPILAN MONITORING JADWAL SPG (DENGAN FILTER MINGGU & TANPA TIMESTAMP) ---
+  # --- TAMPILAN MONITORING JADWAL SPG (MINGGU DIKOLOM PERTAMA & TANGGAL DISEBELAHNYA) ---
   if st.session_state["admin_view"] == "Master_Jadwal_Excel":
     st.markdown("## 📅 Monitoring Jadwal SPG (Kecamatan, Team & Tanggal)")
     st.caption("Monitoring dan edit jadwal SPG harian berdasarkan Kecamatan, Nama Team, dan Tanggal tanpa timestamp.")
@@ -623,32 +624,34 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
       melted_jadwal["Tanggal_Obj"] = pd.to_datetime(melted_jadwal["Kolom_Tanggal"], errors="coerce")
       melted_jadwal["Tanggal"] = melted_jadwal["Tanggal_Obj"].dt.strftime("%d-%m-%Y")
       
+      # Kolom Minggu berupa angka saja (misal: "47")
       periods = []
       for dt_val in melted_jadwal["Tanggal_Obj"]:
         p_label, _ = get_custom_week_info(dt_val)
         periods.append(p_label)
-      melted_jadwal["Periode_Minggu"] = periods
+      melted_jadwal["Minggu"] = periods
 
       kota_col_name = meta_cols[0] if len(meta_cols) > 0 else "Kota"
       kec_col_name = meta_cols[1] if len(meta_cols) > 1 else "Kecamatan"
 
+      # URUTAN KOLOM: Minggu, Tanggal, Kota, Kecamatan, Team (Tanggal persis di sebelah minggu)
       display_jadwal = melted_jadwal[[
-          "Periode_Minggu", kota_col_name, kec_col_name, "Team", "Tanggal"
+          "Minggu", "Tanggal", kota_col_name, kec_col_name, "Team"
       ]].copy()
       display_jadwal = display_jadwal.dropna(subset=["Team"])
       display_jadwal = display_jadwal[display_jadwal["Team"].astype(str).str.strip().str.lower() != "nan"]
       display_jadwal = display_jadwal[display_jadwal["Team"].astype(str).str.strip() != "-"]
 
-      all_weeks_jadwal = sorted(display_jadwal["Periode_Minggu"].dropna().unique().tolist(), reverse=True)
+      all_weeks_jadwal = sorted(display_jadwal["Minggu"].dropna().unique().tolist(), key=lambda x: int(x) if str(x).isdigit() else 0, reverse=True)
       selected_week_filter = st.multiselect(
-          "Filter Periode Minggu (Monitoring Jadwal)",
+          "Filter Minggu (Nomor Minggu, cth: 47)",
           options=all_weeks_jadwal,
           default=all_weeks_jadwal,
           key="filter_monitoring_jadwal_week"
       )
 
       if selected_week_filter:
-        display_jadwal_filtered = display_jadwal[display_jadwal["Periode_Minggu"].isin(selected_week_filter)]
+        display_jadwal_filtered = display_jadwal[display_jadwal["Minggu"].isin(selected_week_filter)]
       else:
         display_jadwal_filtered = display_jadwal.copy()
 
@@ -1097,6 +1100,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
     today_str = today_dt.strftime("%d-%m-%Y")
     current_month_str = today_dt.strftime("%m-%Y")
     current_week_label, _ = get_custom_week_info(today_dt)
+    current_week_str = f"Minggu ke-{current_week_label}"
 
     df_today = df_all_users[df_all_users["Tanggal"] == today_str].copy()
     omset_hari_ini = int(df_today["Jumlah_Bungkus"].sum())
@@ -1127,7 +1131,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
 
     persen_pencapaian = int((omset_hari_ini / target_hari_ini) * 100) if target_hari_ini > 0 else 0
 
-    df_week = df_all_users[df_all_users["Periode_Minggu"] == current_week_label]
+    df_week = df_all_users[df_all_users["Periode_Minggu"] == current_week_str]
     omset_minggu_ini = int(df_week["Jumlah_Bungkus"].sum())
     konsumen_minggu_ini = len(df_week)
 
