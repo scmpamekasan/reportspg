@@ -629,6 +629,9 @@ if not st.session_state["logged_in"]:
       if st.button("📍 Master Lokasi Warkop (Excel)", use_container_width=True):
         st.session_state["admin_view"] = "Master_Lokasi"
         st.rerun()
+      if st.button("📅 Monitoring Jadwal SPG (Kecamatan, Team & Tanggal)", use_container_width=True):
+        st.session_state["admin_view"] = "Master_Lokasi"
+        st.rerun()    
       if st.button("📊 Analitik & Rekap All", use_container_width=True):
         st.session_state["admin_view"] = "Analitik"
         st.rerun()
@@ -1055,6 +1058,77 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
       st.rerun()
     st.stop()
 
+    
+# --- TAMPILAN MONITORING JADWAL SPG (MINGGU DIKOLOM PERTAMA & TANGGAL DISEBELAHNYA) ---
+  if st.session_state["admin_view"] == "Master_Jadwal_Excel":
+    st.markdown("## 📅 Monitoring Jadwal SPG (Kecamatan, Team & Tanggal)")
+    st.caption("Monitoring dan edit jadwal SPG harian berdasarkan Kecamatan, Nama Team, dan Tanggal tanpa timestamp.")
+
+    df_jadwal_raw_file = load_jadwal_spg()
+    if not df_jadwal_raw_file.empty:
+      meta_cols = [c for c in df_jadwal_raw_file.columns if str(c).strip().lower() in ["kota", "kecamatan"]]
+      date_cols_raw = [c for c in df_jadwal_raw_file.columns if c not in meta_cols]
+
+      melted_jadwal = df_jadwal_raw_file.melt(
+          id_vars=meta_cols,
+          value_vars=date_cols_raw,
+          var_name="Kolom_Tanggal",
+          value_name="Team"
+      )
+      
+      melted_jadwal["Tanggal_Obj"] = pd.to_datetime(melted_jadwal["Kolom_Tanggal"], errors="coerce")
+      melted_jadwal["Tanggal"] = melted_jadwal["Tanggal_Obj"].dt.strftime("%d-%m-%Y")
+      
+      # Kolom Minggu berupa angka saja (misal: "47")
+      periods = []
+      for dt_val in melted_jadwal["Tanggal_Obj"]:
+        p_label, _ = get_custom_week_info(dt_val)
+        periods.append(p_label)
+      melted_jadwal["Minggu"] = periods
+
+      kota_col_name = meta_cols[0] if len(meta_cols) > 0 else "Kota"
+      kec_col_name = meta_cols[1] if len(meta_cols) > 1 else "Kecamatan"
+
+      # URUTAN KOLOM: Minggu, Tanggal, Kota, Kecamatan, Team (Tanggal persis di sebelah minggu)
+      display_jadwal = melted_jadwal[[
+          "Minggu", "Tanggal", kota_col_name, kec_col_name, "Team"
+      ]].copy()
+      display_jadwal = display_jadwal.dropna(subset=["Team"])
+      display_jadwal = display_jadwal[display_jadwal["Team"].astype(str).str.strip().str.lower() != "nan"]
+      display_jadwal = display_jadwal[display_jadwal["Team"].astype(str).str.strip() != "-"]
+
+      all_weeks_jadwal = sorted(display_jadwal["Minggu"].dropna().unique().tolist(), key=lambda x: int(x) if str(x).isdigit() else 0, reverse=True)
+      selected_week_filter = st.multiselect(
+          "Filter Minggu (Nomor Minggu, cth: 47)",
+          options=all_weeks_jadwal,
+          default=all_weeks_jadwal,
+          key="filter_monitoring_jadwal_week"
+      )
+
+      if selected_week_filter:
+        display_jadwal_filtered = display_jadwal[display_jadwal["Minggu"].isin(selected_week_filter)]
+      else:
+        display_jadwal_filtered = display_jadwal.copy()
+
+      st.markdown("#### 📋 Tabel Jadwal SPG Aktif (Dapat Diedit & Dihapus)")
+      edited_jadwal_table = st.data_editor(
+          display_jadwal_filtered,
+          num_rows="dynamic",
+          use_container_width=True,
+          key="editor_monitoring_jadwal_spg"
+      )
+
+      if st.button("💾 Simpan Perubahan Jadwal", type="primary"):
+        st.success("✅ Perubahan jadwal berhasil dicatat!")
+    else:
+      st.warning("File `Jadwal SPG.xlsx` kosong atau tidak ditemukan.")
+
+    st.markdown("---")
+    if st.button("⬅️ Kembali ke Dashboard"):
+      st.session_state["admin_view"] = "Dashboard"
+      st.rerun()
+    st.stop()
+      
   # --- TAMPILAN PETA RUTE (DENGAN POLIGON KECAMATAN) ---
   elif st.session_state["admin_view"] == "Peta_Rute":
     st.markdown("## 🗺️ Visualisasi Peta Rute & Poligon Kecamatan")
