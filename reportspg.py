@@ -630,8 +630,8 @@ if not st.session_state["logged_in"]:
         st.session_state["admin_view"] = "Master_Lokasi"
         st.rerun()
       if st.button("📅 Monitoring Jadwal SPG (Kecamatan, Team & Tanggal)", use_container_width=True):
-        st.session_state["admin_view"] = "Master_Lokasi"
-        st.rerun()    
+         st.session_state["admin_view"] = "Master_Jadwal_Excel"
+         st.rerun()  
       if st.button("📊 Analitik & Rekap All", use_container_width=True):
         st.session_state["admin_view"] = "Analitik"
         st.rerun()
@@ -2657,8 +2657,6 @@ if not df_master_excel.empty:
         == str(kecamatan_pilihan).strip().lower()
     )
     filtered_df_warkop = df_master_excel[mask]
-    if filtered_df_warkop.empty:
-      filtered_df_warkop = df_master_excel.copy()
 
   if not filtered_df_warkop.empty and col_warkop_excel:
     filtered_warkop_list = (
