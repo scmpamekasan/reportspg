@@ -989,7 +989,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
         st.stop()
 
     # --- TAMPILAN MONITORING JADWAL SPG (DENGAN MENU TAMBAH, HAPUS ROW, & SAVE DATA) ---
-  if st.session_state["admin_view"] == "Master_Jadwal_Excel":
+   if st.session_state["admin_view"] == "Master_Jadwal_Excel":
     st.markdown("## 📅 Monitoring Jadwal SPG (Kecamatan, Team & Tanggal)")
     st.caption("Monitoring, tambah, edit, hapus baris, dan simpan jadwal SPG harian berdasarkan Kecamatan, Nama Team, dan Tanggal.")
 
