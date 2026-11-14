@@ -340,14 +340,12 @@ def save_master_brands(brands):
 
 def load_master_team_brands():
   current_brands = load_master_brands()
-  # Default awal jika file belum ada sama sekali
   default_teams = {f"Team SPG {i}": current_brands.copy() for i in range(1, 21)}
   
   if os.path.exists(MASTER_TEAM_BRAND_FILE):
     try:
       with open(MASTER_TEAM_BRAND_FILE, "r", encoding="utf-8") as f:
         data = json.load(f)
-        # Pastikan semua Team SPG 1-20 ada di dictionary tanpa menimpa pilihan user
         for i in range(1, 21):
           t_name = f"Team SPG {i}"
           if t_name not in data:
@@ -356,7 +354,6 @@ def load_master_team_brands():
     except Exception:
       return default_teams
   else:
-    # Buat file otomatis saat pertama kali dijalankan jika belum ada
     save_master_team_brands(default_teams)
     return default_teams
 
@@ -539,13 +536,13 @@ def get_group_target(group_name, target_key, default_val):
   return default_val
 
 
-
 def style_status_target(val):
   if val == "Not Achieved":
     return "color: #d32f2f; font-weight: bold;"
   elif val == "Achieved":
     return "color: #16a34a; font-weight: bold;"
   return ""
+
 
 # ====================================================
 # INISIALISASI SESSION STATE & CALLBACK USER CHANGE
@@ -698,7 +695,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
       st.rerun()
     st.stop()
 
- # --- TAMPILAN MASTER TEAM & BRAND ROKOK ---
+  # --- TAMPILAN MASTER TEAM & BRAND ROKOK ---
   elif st.session_state["admin_view"] == "Master_Team":
     st.markdown("## 👥 Master Data: Team 1 - 20 & Alokasi Brand Rokok")
     st.caption(
@@ -1282,8 +1279,21 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
     omset_hari_ini = int(df_today["Jumlah_Bungkus"].sum())
     konsumen_hari_ini = len(df_today)
 
-    # Hitung Target Harian otomatis berdasarkan jumlah team aktif atau default
-    target_hari_ini = max(1, len(df_today["Promotor"].unique()) * 80) if not df_today.empty else 100
+    # --- PERBAIKAN PERHITUNGAN TARGET HARIAN DINAMIS SESUAI BRAND HARI INI ---
+    def get_team_target_dynamic(brand):
+      b_lower = str(brand).lower()
+      if "siro" in b_lower or "kuro" in b_lower:
+        return get_group_target("Black_Siro_Kuro", "target_team", 80)
+      return TARGET_RULES.get(brand, {"target_team": 80}).get("target_team", 80)
+
+    if not df_today.empty:
+      # Hitung berdasarkan total target team dari setiap transaksi/brand yang masuk hari ini
+      target_hari_ini = int(df_today["Brand_Rokok"].apply(get_team_target_dynamic).sum())
+      if target_hari_ini <= 0:
+        target_hari_ini = max(1, len(df_today["Promotor"].unique()) * 80)
+    else:
+      target_hari_ini = 100
+
     persen_pencapaian = int((omset_hari_ini / target_hari_ini) * 100) if target_hari_ini > 0 else 0
 
     df_week = df_all_users[df_all_users["Periode_Minggu"] == current_week_label]
@@ -2046,7 +2056,6 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
     st.markdown("---")
     st.markdown("#### 📑 Log Detail Transaksi All User (SPG)")
 
-    # === MENU EDIT & HAPUS LOG DETAIL TRANSAKSI SPG ===
     with st.expander(
         "✏️ Menu Edit & 🗑️ Hapus Log Detail Transaksi SPG",
         expanded=False,
@@ -2067,7 +2076,6 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
         st.markdown("##### Edit Data Transaksi Langsung pada Tabel")
         st.caption("Klik dua kali pada sel yang ingin diubah, lalu klik tombol Simpan Perubahan di bawah.")
         
-        # Tampilkan data editor untuk mengedit DataFrame secara interaktif
         edited_transaksi_df = st.data_editor(
             df_all_users.drop(columns=["Waktu_Dt", "Tanggal", "Periode_Minggu"], errors="ignore"),
             num_rows="dynamic",
@@ -2076,7 +2084,6 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
         )
         
         if st.button("💾 Simpan Perubahan Edit Transaksi", type="primary", key="btn_save_edit_transaksi"):
-          # Validasi atau pastikan kolom sesuai EXPECTED_COLUMNS
           for col in EXPECTED_COLUMNS:
             if col not in edited_transaksi_df.columns:
               edited_transaksi_df[col] = "-"
@@ -2227,7 +2234,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
   st.stop()
 
 # ====================================================
-# HALAMAN LOGIN UTAMA (LOGIN SPG DENGAN NAMA TEAM, LOGIN SUPERVISI DENGAN PILIHAN TEAM & PLAT KENDARAAN)
+# HALAMAN LOGIN UTAMA
 # ====================================================
 if not st.session_state["logged_in"]:
   _, col_center, _ = st.columns([0.02, 0.96, 0.02])
@@ -2281,7 +2288,6 @@ if not st.session_state["logged_in"]:
           on_change=reset_session_on_user_change,
       )
 
-      # Jika mode Supervisi, tampilkan juga opsi pilihan Plat Nomor Kendaraan secara fleksibel
       pilihan_plat_supervisi = ""
       if st.session_state["login_mode"] == "Supervisi":
         daftar_plat_master = load_master_plat_kendaraan()
@@ -2386,7 +2392,7 @@ if gdf_wilayah is not None:
     daftar_kecamatan = ["Kecamatan Default"]
 
 # ====================================================
-# GPS & DETEKSI OTOMATIS KECAMATAN (REVERSE GEOFENCE)
+# GPS & DETEKSI OTOMATIS KECAMATAN
 # ====================================================
 loc = get_geolocation()
 detected_kecamatan = None
@@ -2444,7 +2450,7 @@ else:
   )
 
 # ====================================================
-# VALIDASI JADWAL SPG DARI EXCEL (Jadwal SPG.xlsx)
+# VALIDASI JADWAL SPG DARI EXCEL
 # ====================================================
 df_jadwal_raw = load_jadwal_spg()
 daftar_kecamatan_terjadwal = []
@@ -2501,7 +2507,6 @@ kecamatan_pilihan = st.selectbox(
     help="Kecamatan difilter otomatis sesuai penugasan jadwal hari ini",
 )
 
-# Filter warkop/LKK
 df_master_excel = load_master_lokasi_excel()
 filtered_df_warkop = pd.DataFrame()
 
@@ -2558,7 +2563,6 @@ nama_warkop_manual = st.selectbox(
     help="Daftar warkop difilter otomatis dari Master WarkopLKK.xlsx",
 )
 
-# Alamat warkop otomatis di bawahnya
 alamat_warkop_terpilih = "-"
 if not df_master_excel.empty and col_warkop_excel and col_alamat_excel:
   match_row = df_master_excel[
@@ -2578,7 +2582,7 @@ st.markdown(
 )
 
 # ====================================================
-# JIKA KONDISI LOGIN SUPERVISI: TAMPILKAN MENU MONITORING & ENTRY KONTAK
+# SUPERVISI MODE
 # ====================================================
 if st.session_state["login_mode"] == "Supervisi":
   st.markdown("---")
@@ -2591,7 +2595,6 @@ if st.session_state["login_mode"] == "Supervisi":
       "Supervisor menginput jumlah kontak konsumen di warkop ini secara manual."
   )
 
-  # Form Supervisi untuk Entry Manual Jumlah Kontak Konsumen
   with st.form("form_entry_kontak_supervisi"):
     st.markdown("#### 📝 Input Manual Jumlah Kontak Konsumen (Oleh Supervisi)")
     jumlah_kontak_input = st.number_input(
@@ -2632,7 +2635,6 @@ if st.session_state["login_mode"] == "Supervisi":
 
   st.markdown("---")
 
-  # Ambil data dari database transaksi SPG & database kontak supervisi
   df_all_db = load_database()
   df_sup_db = load_supervisi_database()
 
@@ -2648,7 +2650,6 @@ if st.session_state["login_mode"] == "Supervisi":
         df_sup_db["Promotor"] == st.session_state["user_spg"]
     ].copy()
 
-  # Filter transaksi SPG per LKK aktif
   df_lkk_active_spg = pd.DataFrame()
   if not df_current_team_spg.empty:
     df_current_team_spg["Jumlah_Bungkus"] = pd.to_numeric(
@@ -2659,7 +2660,6 @@ if st.session_state["login_mode"] == "Supervisi":
         == str(nama_warkop_manual).strip()
     ]
 
-  # Ambil total kontak manual supervisi terbaru untuk LKK aktif ini
   kontak_manual_lkk_ini = 0
   if not df_current_team_sup.empty:
     df_lkk_active_sup = df_current_team_sup[
@@ -2802,7 +2802,7 @@ if st.session_state["login_mode"] == "Supervisi":
   st.stop()
 
 # ====================================================
-# JIKA KONDISI LOGIN SPG: TAMPILKAN FORM INPUT LAPORAN
+# SPG MODE
 # ====================================================
 daftar_master_spg = load_master_spgs()
 if daftar_master_spg:
@@ -2901,7 +2901,6 @@ if (
       st.session_state["draft_bumo"] = rokok_asal_bumo
       st.info(
           "💾 Draft laporan berhasil diamankan ke memori sesi sementara!"
-          " (Aman jika HP sempat tidur sejenak)."
       )
 
     if btn_kirim:
@@ -3077,7 +3076,6 @@ if not df_user_rekap.empty:
       use_container_width=True,
   )
 
-    
   st.markdown("---")
   st.markdown("#### 📑 Log Detail Transaksi & Pengaturan")
 
