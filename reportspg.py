@@ -3098,7 +3098,6 @@ if not df_user_rekap.empty:
     # ====================================================
     # ATURAN TARGET & FUNGSI BANTUAN
     # ====================================================
-    ...
 
   def load_target_rules():
     # (isi fungsi load target rules)
