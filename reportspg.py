@@ -900,7 +900,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
 
     df_lokasi_excel = load_master_lokasi_excel()
     cols_available = df_lokasi_excel.columns.tolist()
-    st.info(
+    #st.info(
         f"📁 Sumber file aktif: `{MASTER_LOKASI_FILE}` | Kolom terdeteksi:"
         f" {cols_available}"
     )
