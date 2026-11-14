@@ -139,12 +139,6 @@ st.markdown(
         background-color: #16a34a;
         border-radius: 6px;
     }
-    .footer-note {
-        text-align: center;
-        font-size: 0.8rem;
-        color: #64748b;
-        margin-top: 18px;
-    }
     .address-box {
         background-color: #ffffff;
         border: 1px solid #e2e8f0;
@@ -203,7 +197,6 @@ def get_custom_week_info(dt):
   else:
     fri_date = d + timedelta(days=(4 - wd))
   _, iso_w, _ = fri_date.isocalendar()
-  # Mengembalikan angka minggu saja (misal: "47") dan iso_w integer
   return str(iso_w), iso_w
 
 
@@ -624,7 +617,6 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
       melted_jadwal["Tanggal_Obj"] = pd.to_datetime(melted_jadwal["Kolom_Tanggal"], errors="coerce")
       melted_jadwal["Tanggal"] = melted_jadwal["Tanggal_Obj"].dt.strftime("%d-%m-%Y")
       
-      # Kolom Minggu berupa angka saja (misal: "47")
       periods = []
       for dt_val in melted_jadwal["Tanggal_Obj"]:
         p_label, _ = get_custom_week_info(dt_val)
@@ -634,7 +626,6 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
       kota_col_name = meta_cols[0] if len(meta_cols) > 0 else "Kota"
       kec_col_name = meta_cols[1] if len(meta_cols) > 1 else "Kecamatan"
 
-      # URUTAN KOLOM: Minggu, Tanggal, Kota, Kecamatan, Team (Tanggal persis di sebelah minggu)
       display_jadwal = melted_jadwal[[
           "Minggu", "Tanggal", kota_col_name, kec_col_name, "Team"
       ]].copy()
@@ -1366,7 +1357,7 @@ if not df_master_excel.empty and col_warkop_excel and col_alamat_excel:
 st.markdown(f'<div class="address-box">📍 <b>Alamat Warkop / LKK:</b> {alamat_warkop_terpilih}</div>', unsafe_allow_html=True)
 
 # ====================================================
-# MODE SUPERVISI
+# MODE SUPERVISI (DIPERBAIKI & DIKEMBALIKAN)
 # ====================================================
 if st.session_state["login_mode"] == "Supervisi":
   st.markdown("---")
