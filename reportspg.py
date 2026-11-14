@@ -1853,7 +1853,7 @@ if not st.session_state["logged_in"]:
             if st.session_state["login_mode"] == "Supervisi":
                 daftar_plat_master = load_master_plat_kendaraan()
                 if not daftar_plat_master:
-                    daftar_plat_master = ["L 1234 ABC"]
+                    daftar_plat_master = ["L 1234 ABC", "L 1235 BCD"]
                 pilihan_plat_supervisi = st.selectbox(
                     "🚗 Pilih Plat Nomor Kendaraan Operasional",
                     daftar_plat_master,
