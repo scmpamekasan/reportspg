@@ -539,6 +539,14 @@ def get_group_target(group_name, target_key, default_val):
   return default_val
 
 
+
+def style_status_target(val):
+  if val == "Not Achieved":
+    return "color: #d32f2f; font-weight: bold;"
+  elif val == "Achieved":
+    return "color: #16a34a; font-weight: bold;"
+  return ""
+
 # ====================================================
 # INISIALISASI SESSION STATE & CALLBACK USER CHANGE
 # ====================================================
@@ -755,32 +763,6 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
       st.session_state["admin_view"] = "Dashboard"
       st.rerun()
     st.stop()
-      
-
-    st.markdown("---")
-    st.markdown("#### 📋 Ringkasan Alokasi Brand Seluruh Team (1 - 20)")
-    
-    # Muat ulang langsung dari file agar tabel ringkasan 100% sesuai isi file JSON
-    fresh_team_brands = load_master_team_brands()
-    summary_list = []
-    for i in range(1, 21):
-      t_name = f"Team SPG {i}"
-      b_list = fresh_team_brands.get(t_name, [])
-      summary_list.append({
-          "Team": t_name,
-          "Brand Diizinkan": ", ".join(b_list)
-          if b_list
-          else "(Belum ada brand)",
-      })
-
-    st.dataframe(pd.DataFrame(summary_list), use_container_width=True)
-
-    st.markdown("---")
-    if st.button("⬅️ Kembali ke Dashboard", key="btn_back_master_team"):
-      st.session_state["admin_view"] = "Dashboard"
-      st.rerun()
-    st.stop()
-      
       
 
   # --- TAMPILAN MASTER NAMA SPG ---
@@ -3094,40 +3076,6 @@ if not df_user_rekap.empty:
       ),
       use_container_width=True,
   )
-
-    # ====================================================
-    # ATURAN TARGET & FUNGSI BANTUAN
-    # ====================================================
-
-  def load_target_rules():
-    if os.path.exists(MASTER_TARGET_FILE):
-      try:
-        with open(MASTER_TARGET_FILE, "r", encoding="utf-8") as f:
-          return json.load(f)
-      except Exception:
-        return DEFAULT_TARGET_RULES
-    return DEFAULT_TARGET_RULES
-
-  def save_target_rules(rules):
-    with open(MASTER_TARGET_FILE, "w", encoding="utf-8") as f:
-      json.dump(rules, f, ensure_ascii=False, indent=2)
-
-  TARGET_RULES = load_target_rules()
-
-  def get_group_target(group_name, target_key, default_val):
-    rules = load_target_rules()
-    for brand, rule in rules.items():
-      if rule.get("group") == group_name and target_key in rule:
-        return rule[target_key]
-    return default_val
-
-# PASTIKAN FUNGSI INI BERADA DI BAGIAN ATAS:
-  def style_status_target(val):
-    if val == "Not Achieved":
-      return "color: #d32f2f; font-weight: bold;"
-    elif val == "Achieved":
-      return "color: #16a34a; font-weight: bold;"
-    return ""
 
     
   st.markdown("---")
