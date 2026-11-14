@@ -357,7 +357,7 @@ def save_master_brands(brands):
 
 
 def load_master_team_brands():
-  # Ambil merek rokok terbaru yang aktif dari master brand
+  # Ambil daftar brand terbaru secara dinamis dari master_brand_rokok.json
   current_brands = load_master_brands()
   default_teams = {f"Team SPG {i}": current_brands.copy() for i in range(1, 21)}
   
@@ -370,10 +370,10 @@ def load_master_team_brands():
           if t_name not in data:
             data[t_name] = current_brands.copy()
           else:
-            # Opsional: Pastikan brand baru yang ditambahkan di master brand 
-            # juga otomatis tersedia atau bisa di-check di team jika diperlukan, 
-            # atau biarkan sesuai kustomisasi simpanan admin.
-            pass
+            # Pastikan brand baru yang ditambahkan di master juga otomatis ada di list team jika belum ada
+            for b in current_brands:
+              if b not in data[t_name]:
+                data[t_name].append(b)
         return data
     except Exception:
       return default_teams
