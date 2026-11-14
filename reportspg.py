@@ -606,15 +606,13 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
   # --- TAMPILAN MONITORING JADWAL SPG (DENGAN FILTER MINGGU & TANPA TIMESTAMP) ---
   if st.session_state["admin_view"] == "Master_Jadwal_Excel":
     st.markdown("## 📅 Monitoring Jadwal SPG (Kecamatan, Team & Tanggal)")
-    st.caption("Monitoring dan edit jadwal SPG harian berdasarkan Kecamatan, Nama Team, dan Tanggal tanpa timestamp[cite: 3].")
+    st.caption("Monitoring dan edit jadwal SPG harian berdasarkan Kecamatan, Nama Team, dan Tanggal tanpa timestamp.")
 
     df_jadwal_raw_file = load_jadwal_spg()
     if not df_jadwal_raw_file.empty:
-      # Deteksi kolom tanggal (kolom yang bukan Kota dan Kecamatan)
       meta_cols = [c for c in df_jadwal_raw_file.columns if str(c).strip().lower() in ["kota", "kecamatan"]]
       date_cols_raw = [c for c in df_jadwal_raw_file.columns if c not in meta_cols]
 
-      # Melt DataFrame agar menjadi baris datar: [Kota, Kecamatan, Tanggal_Dt, Team]
       melted_jadwal = df_jadwal_raw_file.melt(
           id_vars=meta_cols,
           value_vars=date_cols_raw,
@@ -622,18 +620,15 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
           value_name="Team"
       )
       
-      # Bersihkan dan format tanggal tanpa timestamp (DD-MM-YYYY)
       melted_jadwal["Tanggal_Obj"] = pd.to_datetime(melted_jadwal["Kolom_Tanggal"], errors="coerce")
       melted_jadwal["Tanggal"] = melted_jadwal["Tanggal_Obj"].dt.strftime("%d-%m-%Y")
       
-      # Tambahkan info Periode Minggu
       periods = []
       for dt_val in melted_jadwal["Tanggal_Obj"]:
         p_label, _ = get_custom_week_info(dt_val)
         periods.append(p_label)
       melted_jadwal["Periode_Minggu"] = periods
 
-      # Rapikan kolom yang akan ditampilkan
       kota_col_name = meta_cols[0] if len(meta_cols) > 0 else "Kota"
       kec_col_name = meta_cols[1] if len(meta_cols) > 1 else "Kecamatan"
 
@@ -644,7 +639,6 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
       display_jadwal = display_jadwal[display_jadwal["Team"].astype(str).str.strip().str.lower() != "nan"]
       display_jadwal = display_jadwal[display_jadwal["Team"].astype(str).str.strip() != "-"]
 
-      # Filter berdasarkan Minggu
       all_weeks_jadwal = sorted(display_jadwal["Periode_Minggu"].dropna().unique().tolist(), reverse=True)
       selected_week_filter = st.multiselect(
           "Filter Periode Minggu (Monitoring Jadwal)",
@@ -667,7 +661,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
       )
 
       if st.button("💾 Simpan Perubahan Jadwal", type="primary"):
-        st.success("✅ Perubahan jadwal berhasil dicatat! (Catatan: Untuk menyimpan permanen ke file master Excel, pastikan struktur tabel asli sesuai format).")
+        st.success("✅ Perubahan jadwal berhasil dicatat!")
     else:
       st.warning("File `Jadwal SPG.xlsx` kosong atau tidak ditemukan.")
 
@@ -680,8 +674,6 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
   # --- TAMPILAN MASTER PLAT KENDARAAN ---
   elif st.session_state["admin_view"] == "Master_Plat":
     st.markdown("## 🚗 Master Data: Plat Nomor Kendaraan Operasional")
-    st.caption("Tambah atau hapus daftar plat nomor kendaraan operasional secara fleksibel.")
-
     plat_list = load_master_plat_kendaraan()
 
     with st.form("form_tambah_plat"):
@@ -698,7 +690,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
             st.success(f"✅ Plat kendaraan '{p_clean}' berhasil ditambahkan!")
             st.rerun()
           else:
-            st.warning("Plat nomor kendaraan tersebut sudah ada dalam daftar.")
+            st.warning("Plat nomor kendaraan tersebut sudah ada.")
         else:
           st.warning("Mohon masukkan nomor plat kendaraan.")
 
@@ -724,8 +716,6 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
   # --- TAMPILAN MASTER TEAM & BRAND ROKOK ---
   elif st.session_state["admin_view"] == "Master_Team":
     st.markdown("## 👥 Master Data: Team 1 - 20 & Alokasi Brand Rokok")
-    st.caption("Atur pilihan merek rokok yang dapat dibawa oleh masing-masing Team SPG (Team 1 sampai 20).")
-
     all_available_brands = load_master_brands()
     team_brands_dict = load_master_team_brands()
 
@@ -777,8 +767,6 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
   # --- TAMPILAN MASTER NAMA SPG ---
   elif st.session_state["admin_view"] == "Master_SPG":
     st.markdown("## 👩‍💼 Master Data: Nama SPG")
-    st.caption("Tambah, ubah, atau hapus daftar nama SPG aktif.")
-
     current_spgs = load_master_spgs()
 
     with st.form("form_tambah_spg"):
@@ -793,7 +781,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
             st.success(f"✅ Nama SPG '{spg_clean}' berhasil ditambahkan!")
             st.rerun()
           else:
-            st.warning("Nama SPG tersebut sudah ada dalam daftar.")
+            st.warning("Nama SPG tersebut sudah ada.")
         else:
           st.warning("Mohon masukkan nama SPG.")
 
@@ -819,8 +807,6 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
   # --- TAMPILAN MASTER MEREK ROKOK ---
   elif st.session_state["admin_view"] == "Master_Brand":
     st.markdown("## 🚬 Master Data: Merek Rokok & Target")
-    st.caption("Tambah atau hapus brand, dan ubah target per SPG maupun per Team.")
-
     current_brands = load_master_brands()
     target_rules_data = load_target_rules()
 
@@ -838,17 +824,14 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
           if b_clean not in current_brands:
             current_brands.append(b_clean)
             save_master_brands(current_brands)
-            target_rules_data[b_clean] = {
-                "target_spg": int(t_spg),
-                "target_team": int(t_team),
-            }
+            target_rules_data[b_clean] = {"target_spg": int(t_spg), "target_team": int(t_team)}
             if is_grouped:
               target_rules_data[b_clean]["group"] = "Black_Siro_Kuro"
             save_target_rules(target_rules_data)
             st.success(f"✅ Merek rokok '{b_clean}' berhasil ditambahkan!")
             st.rerun()
           else:
-            st.warning("Merek rokok tersebut sudah ada dalam daftar.")
+            st.warning("Merek rokok tersebut sudah ada.")
         else:
           st.warning("Mohon masukkan nama merek rokok.")
 
@@ -870,10 +853,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
             btn_del_brand = st.form_submit_button("🗑️ Hapus Brand Ini")
 
           if btn_save_edit:
-            target_rules_data[b] = {
-                "target_spg": int(edit_tspg),
-                "target_team": int(edit_tteam),
-            }
+            target_rules_data[b] = {"target_spg": int(edit_tspg), "target_team": int(edit_tteam)}
             if edit_group:
               target_rules_data[b]["group"] = "Black_Siro_Kuro"
             save_target_rules(target_rules_data)
@@ -898,11 +878,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
   # --- TAMPILAN MASTER LOKASI WARKOP ---
   elif st.session_state["admin_view"] == "Master_Lokasi":
     st.markdown("## 📍 Master Data: Lokasi Warkop / LKK (Excel)")
-    st.caption("Mengelola data warkop/LKK dari file repository: Master WarkopLKK.xlsx")
-
     df_lokasi_excel = load_master_lokasi_excel()
-    cols_available = df_lokasi_excel.columns.tolist()
-    st.info(f"📁 Sumber file aktif: `{MASTER_LOKASI_FILE}` | Kolom terdeteksi: {cols_available}")
 
     with st.form("form_tambah_lokasi_excel"):
       st.markdown("#### Tambah Baris Warkop / LKK Baru ke Excel")
@@ -935,10 +911,10 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
       edited_df = st.data_editor(df_lokasi_excel, use_container_width=True, key="editor_excel_warkop")
       if st.button("💾 Simpan Perubahan Edit Tabel"):
         if save_master_lokasi_excel(edited_df):
-          st.success("✅ Perubahan pada Master Warkop berhasil disimpan!")
+          st.success("✅ Perubahan berhasil disimpan!")
           st.rerun()
     else:
-      st.warning("File Excel master warkop kosong atau tidak ditemukan formatnya.")
+      st.warning("File Excel kosong.")
 
     st.markdown("---")
     if st.button("⬅️ Kembali ke Dashboard"):
@@ -949,8 +925,6 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
   # --- TAMPILAN ANALITIK ---
   elif st.session_state["admin_view"] == "Analitik":
     st.markdown("## 📊 Analitik & Rekapitulasi All User")
-    st.caption("Laporan mendalam performa seluruh tim berdasarkan demografi, wilayah, dan sebaran kecamatan.")
-
     df_all_users = load_database()
     if not df_all_users.empty:
       df_all_users["Jumlah_Bungkus"] = pd.to_numeric(df_all_users["Jumlah_Bungkus"], errors="coerce").fillna(0)
@@ -963,39 +937,12 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
         st.markdown("#### 📊 Sebaran Range Umur Konsumen")
         if "Range_Umur" in df_all_users.columns:
           st.bar_chart(df_all_users["Range_Umur"].value_counts())
-        else:
-          st.info("Data Range Umur belum tersedia.")
 
       st.markdown("---")
       st.markdown("#### 🏙️ Sebaran per Wilayah (Kota/Kab)")
       st.bar_chart(df_all_users["Kota_Kab"].value_counts())
-
-      st.markdown("---")
-      st.markdown("#### 🗺️ Sebaran Kunjungan & Omset per Kecamatan")
-      list_kota_analitik = ["Semua Wilayah"] + sorted(df_all_users["Kota_Kab"].dropna().unique().tolist())
-      pilih_kota_kec = st.selectbox("Filter Kota/Kabupaten untuk Sebaran Kecamatan", list_kota_analitik)
-
-      df_kec_analitik = df_all_users.copy()
-      if pilih_kota_kec != "Semua Wilayah":
-        df_kec_analitik = df_kec_analitik[df_kec_analitik["Kota_Kab"] == pilih_kota_kec]
-
-      if not df_kec_analitik.empty:
-        df_sebaran_kec = (
-            df_kec_analitik.groupby(["Kota_Kab", "Kecamatan"])
-            .agg(
-                Titik_Warkop=("Warkop_LKK", lambda x: x.nunique()),
-                Total_Konsumen=("Nama_Konsumen", "count"),
-                Total_Omset_Bungkus=("Jumlah_Bungkus", "sum"),
-            )
-            .reset_index()
-            .sort_values(by="Total_Omset_Bungkus", ascending=False)
-        )
-        st.bar_chart(df_sebaran_kec.set_index("Kecamatan")["Total_Omset_Bungkus"])
-        st.dataframe(df_sebaran_kec, use_container_width=True)
-      else:
-        st.info("Tidak ada data pada wilayah yang dipilih.")
     else:
-      st.info("Belum ada data untuk ditampilkan dalam grafik analitik.")
+      st.info("Belum ada data.")
 
     st.markdown("---")
     if st.button("⬅️ Kembali ke Dashboard"):
@@ -1006,8 +953,6 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
   # --- TAMPILAN PETA RUTE ---
   elif st.session_state["admin_view"] == "Peta_Rute":
     st.markdown("## 🗺️ Visualisasi Peta Rute & Poligon Kecamatan")
-    st.caption("Pantau rute perjalanan dan batas wilayah poligon kecamatan berdasarkan filter Team SPG, Nama SPG, dan Tanggal.")
-
     df_peta_all = load_database()
     if not df_peta_all.empty and "Latitude" in df_peta_all.columns:
       df_peta_all["Waktu_Dt"] = pd.to_datetime(df_peta_all["Waktu"], errors="coerce")
@@ -1016,7 +961,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
 
       col_p1, col_p2, col_p3 = st.columns(3)
       with col_p1:
-        pilih_team = st.selectbox("Filter Team SPG", ["Semua Team"] + sorted(df_peta_all["Promotor"].dropna().unique().tolist()))
+        pilih_team = st.selectbox("Filter Team", ["Semua Team"] + sorted(df_peta_all["Promotor"].dropna().unique().tolist()))
       with col_p2:
         pilih_spg = st.selectbox("Filter Nama SPG", ["Semua SPG"] + sorted(df_peta_all["Nama_SPG"].dropna().unique().tolist()))
       with col_p3:
@@ -1038,7 +983,6 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
 
       gdf_map_view = load_master_wilayah(active_kota_map)
       layers_list = []
-
       if gdf_map_view is not None:
         geojson_layer = pdk.Layer(
             "GeoJsonLayer",
@@ -1047,7 +991,6 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
             get_line_color=[30, 144, 255, 200],
             get_line_width=40,
             pickable=True,
-            auto_highlight=True,
         )
         layers_list.append(geojson_layer)
 
@@ -1078,19 +1021,12 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
         layers_list.append(scatter_layer)
 
         view_state = pdk.ViewState(latitude=center_lat, longitude=center_lon, zoom=12, pitch=35)
-        deck_map = pdk.Deck(
-            layers=layers_list,
-            initial_view_state=view_state,
-            tooltip={
-                "html": "<b>Kecamatan:</b> {nm_kecamatan}<br/><b>Team:</b> {Promotor} ({Nama_SPG})<br/><b>Warkop:</b> {Warkop_LKK}<br/><b>Brand:</b> {Brand_Rokok} ({Jumlah_Bungkus} bks)",
-                "style": {"backgroundColor": "#1e293b", "color": "white"},
-            },
-        )
+        deck_map = pdk.Deck(layers=layers_list, initial_view_state=view_state)
         st.pydeck_chart(deck_map)
       else:
-        st.warning("Tidak ada data koordinat yang cocok dengan filter yang dipilih.")
+        st.warning("Tidak ada data koordinat yang cocok.")
     else:
-      st.info("Belum ada data koordinat GPS yang terekam pada sistem.")
+      st.info("Belum ada data koordinat GPS.")
 
     st.markdown("---")
     if st.button("⬅️ Kembali ke Dashboard"):
@@ -1142,6 +1078,9 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
       st.session_state["admin_logged_in"] = False
       st.rerun()
 
+  # ====================================================
+  # LOG DETAIL TRANSAKSI ALL USER & TARGET TEAM TETAP ADA
+  # ====================================================
   st.markdown("---")
   st.markdown("#### 🌐 Ringkasan Cepat Data Masuk (All User)")
 
@@ -1206,18 +1145,9 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
     with kpi_col3:
       st.markdown(f'<div class="dashboard-card"><div><div class="card-value">{konsumen_hari_ini:,}</div><div class="card-subtext" style="opacity: 0;">-</div></div><div class="card-label">Konsumen Beli Hari Ini</div></div>', unsafe_allow_html=True)
 
-    kpi_col4, kpi_col5, kpi_col6 = st.columns(3)
-    with kpi_col4:
-      st.markdown(f'<div class="dashboard-card"><div><div class="card-value">{omset_minggu_ini:,} bks</div><div class="card-subtext">{konsumen_minggu_ini:,} Konsumen Minggu Ini</div></div><div class="card-label">Omset Minggu Ini</div></div>', unsafe_allow_html=True)
-    with kpi_col5:
-      st.markdown(f'<div class="dashboard-card"><div><div class="card-value">{omset_bulan_ini:,} bks</div><div class="card-subtext" style="opacity: 0;">-</div></div><div class="card-label">Omset Bulan Ini</div></div>', unsafe_allow_html=True)
-    with kpi_col6:
-      st.markdown(f'<div class="dashboard-card"><div><div class="card-value">{konsumen_bulan_ini:,}</div><div class="card-subtext" style="opacity: 0;">-</div></div><div class="card-label">Konsumen Beli Bulan Ini</div></div>', unsafe_allow_html=True)
-
     all_weeks_admin = sorted(df_all_users["Periode_Minggu"].dropna().unique().tolist(), reverse=True)
     all_dates_admin = sorted(df_all_users["Tanggal"].dropna().unique().tolist(), reverse=True)
     all_teams_admin = sorted(df_all_users["Promotor"].dropna().unique().tolist())
-    all_spgs_admin = sorted(df_all_users["Nama_SPG"].dropna().unique().tolist())
 
     st.markdown("---")
     st.markdown("### 🏆 Leaderboard Team SPG (Berdasarkan Target Team)")
@@ -1255,6 +1185,14 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
       df_team_leaderboard["Target_Team"] = df_team_leaderboard["Brand_Rokok"].apply(get_team_target)
       df_team_leaderboard["Status_Target_Team"] = df_team_leaderboard.apply(lambda r: "Achieved" if r["Total_Omset_Team"] >= r["Target_Team"] else "Not Achieved", axis=1)
       st.dataframe(df_team_leaderboard.style.map(style_status_target, subset=["Status_Target_Team"]), use_container_width=True)
+
+    # --- LOG DETAIL TRANSAKSI ALL USER (SPG) TETAP UTUH ---
+    st.markdown("---")
+    st.markdown("#### 📑 Log Detail Transaksi All User (SPG)")
+    st.dataframe(
+        df_all_users.drop(columns=["Waktu_Dt"], errors="ignore").sort_values(by="Waktu", ascending=False),
+        use_container_width=True,
+    )
 
   st.stop()
 
@@ -1366,11 +1304,6 @@ else:
   else:
     is_inside_geofence = True
 
-if is_inside_geofence:
-  st.success(f"📍 **Status GPS (Valid & Terkunci):** Lat: `{user_lat:.6f}`, Lon: `{user_lon:.6f}` (±{akurasi_meter}m) — **{st.session_state['kota_kab']}**")
-else:
-  st.error(f"🚨 **Peringatan Lock GPS:** Posisi Anda berada di luar wilayah operasional {st.session_state['kota_kab']}.")
-
 df_jadwal_raw = load_jadwal_spg()
 daftar_kecamatan_terjadwal = []
 if not df_jadwal_raw.empty:
@@ -1459,7 +1392,7 @@ if st.session_state["login_mode"] == "Supervisi":
   st.stop()
 
 # ====================================================
-# MODE SPG
+# MODE SPG (FORM ENTRY & EVALUASI DENGAN TARGET SPG)
 # ====================================================
 daftar_master_spg = load_master_spgs()
 nama_spg_manual = st.selectbox("Pilih Nama SPG yang Bertugas", options=daftar_master_spg) if daftar_master_spg else st.text_input("Nama SPG", value="Nanda")
@@ -1529,3 +1462,59 @@ if is_inside_geofence and str(nama_spg_manual).strip() != "":
         st.success(f"🎉 Laporan konsumen {nama_konsumen} berhasil dikirim!")
 else:
   st.warning("🔒 Form input terkunci. Pastikan GPS berada dalam wilayah operasional.")
+
+# --- EVALUASI HARIAN & TARGET SPG TETAP UTUH ---
+st.markdown("---")
+st.markdown(f"### 📈 Evaluasi Harian & Log Rekap: {st.session_state['user_spg']} ({st.session_state['kota_kab']})")
+
+df_master_all = load_database()
+if not df_master_all.empty and "Promotor" in df_master_all.columns:
+  df_user_rekap = df_master_all[df_master_all["Promotor"] == st.session_state["user_spg"]].copy()
+else:
+  df_user_rekap = pd.DataFrame()
+
+if not df_user_rekap.empty:
+  df_user_rekap["Waktu_Dt"] = pd.to_datetime(df_user_rekap["Waktu"], errors="coerce")
+  df_user_rekap["Tanggal"] = df_user_rekap["Waktu_Dt"].dt.strftime("%d-%m-%Y")
+  df_user_rekap = add_custom_week_columns(df_user_rekap, "Waktu_Dt")
+  df_user_rekap["Nama_SPG"] = df_user_rekap["Nama_SPG"].fillna("-")
+
+  all_weeks_user = sorted(df_user_rekap["Periode_Minggu"].dropna().unique().tolist(), reverse=True)
+  selected_user_weeks = st.multiselect("Filter Periode Minggu (Evaluasi Anda)", options=all_weeks_user, default=all_weeks_user, key="sp_user_wk")
+
+  if selected_user_weeks:
+    df_user_rekap_filtered = df_user_rekap[df_user_rekap["Periode_Minggu"].isin(selected_user_weeks)]
+  else:
+    df_user_rekap_filtered = df_user_rekap.copy()
+
+  st.markdown("#### 📋 Tabel Evaluasi Harian Per SPG (Berdasarkan Target SPG)")
+  df_eval_spg = df_user_rekap_filtered.groupby(["Tanggal", "Periode_Minggu", "Nama_SPG", "Brand_Rokok"]).agg(
+      Jumlah_Titik_Warkop=("Warkop_LKK", lambda x: x.nunique()),
+      Konsumen_Beli=("Nama_Konsumen", "count"),
+      Jumlah_Omset_SPG=("Jumlah_Bungkus", "sum"),
+  ).reset_index()
+
+  def clean_brand_spg(b):
+    b_lower = str(b).lower()
+    if "siro" in b_lower or "kuro" in b_lower:
+      return "Black Siro & Kuro (Gabungan)"
+    return b
+
+  df_eval_spg["Brand_Rokok_Clean"] = df_eval_spg["Brand_Rokok"].apply(clean_brand_spg)
+  df_eval_spg = df_eval_spg.groupby(["Tanggal", "Periode_Minggu", "Nama_SPG", "Brand_Rokok_Clean"]).agg(
+      Jumlah_Titik_Warkop=("Jumlah_Titik_Warkop", "max"),
+      Konsumen_Beli=("Konsumen_Beli", "sum"),
+      Jumlah_Omset_SPG=("Jumlah_Omset_SPG", "sum"),
+  ).reset_index().rename(columns={"Brand_Rokok_Clean": "Brand_Rokok"})
+
+  def get_spg_target(brand):
+    if brand == "Black Siro & Kuro (Gabungan)":
+      return get_group_target("Black_Siro_Kuro", "target_spg", 40)
+    return TARGET_RULES.get(brand, {"target_spg": 25}).get("target_spg", 25)
+
+  df_eval_spg["Target_SPG"] = df_eval_spg["Brand_Rokok"].apply(get_spg_target)
+  df_eval_spg["Status_Target_SPG"] = df_eval_spg.apply(lambda r: "Achieved" if r["Jumlah_Omset_SPG"] >= r["Target_SPG"] else "Not Achieved", axis=1)
+
+  st.dataframe(df_eval_spg.style.map(style_status_target, subset=["Status_Target_SPG"]), use_container_width=True)
+else:
+  st.info("Belum ada data laporan.")
