@@ -1,7 +1,9 @@
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from io import BytesIO
 import json
+import requests
 import os
+import tempfile
 import geopandas as gpd
 import pandas as pd
 import pydeck as pdk
@@ -9,11 +11,13 @@ from shapely.geometry import Point
 import streamlit as st
 from streamlit_js_eval import get_geolocation
 
+from schedule_entry import SCHEDULE_DETAIL_FILE, get_scheduled_vehicles, render_schedule_entry
+
 # ====================================================
 # KONFIGURASI HALAMAN STREAMLIT
 # ====================================================
 st.set_page_config(
-    page_title="Laporan SPG & Supervisi Mobile",
+    page_title="Laporan Dirsell SPG",
     page_icon="📍",
     layout="centered",
     initial_sidebar_state="auto",
@@ -161,7 +165,11 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# File database lokal & master
+# ====================================================
+# DEFINISI FILE DATABASE LOKAL & KONFIGURASI GOOGLE SHEET
+# ====================================================
+WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzk6tqiNonaArNjJt7X0IIhja_D7elgGLkNPE90xmDtvdHwNeq4VhZJQfUU2OE_jiA/exec"
+
 DB_FILE = "rekap_laporan_spg.csv"
 DB_SUPERVISI_KONTAK_FILE = "rekap_kontak_supervisi.csv"
 MASTER_BRAND_FILE = "master_brand_rokok.json"
@@ -204,6 +212,355 @@ EXPECTED_SUPERVISI_COLUMNS = [
     "Alamat_Warkop",
     "Jumlah_Kontak_Manual",
 ]
+
+def df_to_sheet_rows(df: pd.DataFrame):
+    if df is None:
+        return []
+    columns = [str(column) for column in df.columns]
+    if df.empty:
+        return [columns] if columns else []
+
+    rows = []
+    for row in df.itertuples(index=False, name=None):
+        serialized_row = []
+        for value in row:
+            if pd.isna(value):
+                serialized_row.append("")
+            elif isinstance(value, (datetime, pd.Timestamp)):
+                serialized_row.append(value.strftime("%Y-%m-%d %H:%M:%S"))
+            elif isinstance(value, date):
+                serialized_row.append(value.isoformat())
+            else:
+                serialized_row.append(str(value))
+        rows.append(serialized_row)
+
+    return [columns] + rows
+
+def google_json_default(value):
+    if isinstance(value, (datetime, date)):
+        return value.isoformat()
+    item = getattr(value, "item", None)
+    if callable(item):
+        return item()
+    raise TypeError(f"Object of type {type(value).__name__} is not JSON serializable")
+
+def sheet_rows_to_df(rows, expected_columns=None):
+    if not rows:
+        return pd.DataFrame(columns=expected_columns)
+
+    columns = [str(column) for column in rows[0]]
+    df = pd.DataFrame(rows[1:], columns=columns)
+    if expected_columns is not None:
+        for column in expected_columns:
+            if column not in df.columns:
+                df[column] = ""
+        return df[expected_columns]
+    return df
+
+def post_google_sheet(payload):
+    payload_json = json.dumps(payload, ensure_ascii=False, default=google_json_default)
+    response = requests.post(
+        WEB_APP_URL,
+        data=payload_json,
+        headers={"Content-Type": "application/json"},
+        timeout=(10, 120),
+    )
+    try:
+        response.raise_for_status()
+    except requests.HTTPError as exc:
+        raise RuntimeError(
+            f"Google Apps Script mengembalikan HTTP {response.status_code} "
+            f"(Content-Type: {response.headers.get('Content-Type', 'tidak diketahui')})."
+        ) from exc
+
+    try:
+        result = response.json()
+    except ValueError as exc:
+        raise RuntimeError(
+            "Google Apps Script tidak mengembalikan JSON "
+            f"(HTTP {response.status_code}, "
+            f"Content-Type: {response.headers.get('Content-Type', 'tidak diketahui')}). "
+            "Periksa URL Web App, akses deployment, dan handler doPost."
+        ) from exc
+
+    if not isinstance(result, dict):
+        raise RuntimeError("Format respons Google Apps Script tidak valid.")
+    return result
+
+def load_supabase_backup_data():
+    df_rekap = pd.read_csv(DB_FILE) if os.path.exists(DB_FILE) else pd.DataFrame(columns=EXPECTED_COLUMNS)
+    df_sup = pd.read_csv(DB_SUPERVISI_KONTAK_FILE) if os.path.exists(DB_SUPERVISI_KONTAK_FILE) else pd.DataFrame(columns=EXPECTED_SUPERVISI_COLUMNS)
+    df_jdw = pd.read_excel(JADWAL_SPG_FILE) if os.path.exists(JADWAL_SPG_FILE) else pd.DataFrame()
+    df_wrk = pd.read_excel(MASTER_LOKASI_FILE) if os.path.exists(MASTER_LOKASI_FILE) else pd.DataFrame()
+
+    def read_json_file(file_path):
+        if not os.path.exists(file_path):
+            return None
+        with open(file_path, "r", encoding="utf-8") as file:
+            return json.load(file)
+
+    return {
+        "backup_version": 1,
+        "datasets": {
+            "rekap_laporan": df_to_sheet_rows(df_rekap),
+            "rekap_supervisi": df_to_sheet_rows(df_sup),
+            "jadwal_spg": df_to_sheet_rows(df_jdw),
+            "master_warkop": df_to_sheet_rows(df_wrk),
+        },
+        "master_data": {
+            "nama_spg": read_json_file(MASTER_SPG_FILE),
+            "nama_team": read_json_file(MASTER_TEAM_NAME_FILE),
+            "team_brand": read_json_file(MASTER_TEAM_BRAND_FILE),
+            "brand_rokok": read_json_file(MASTER_BRAND_FILE),
+            "target_brand": read_json_file(MASTER_TARGET_FILE),
+            "plat_kendaraan": read_json_file(MASTER_PLAT_FILE),
+            "jadwal_detail": read_json_file(SCHEDULE_DETAIL_FILE),
+        },
+    }
+
+def get_supabase_config():
+    try:
+        supabase_url = st.secrets.get("SUPABASE_URL", os.environ.get("SUPABASE_URL"))
+        supabase_key = st.secrets.get("SUPABASE_KEY", os.environ.get("SUPABASE_KEY"))
+    except FileNotFoundError:
+        supabase_url = os.environ.get("SUPABASE_URL")
+        supabase_key = os.environ.get("SUPABASE_KEY")
+
+    if not supabase_url or not supabase_key:
+        raise RuntimeError(
+            "Konfigurasi SUPABASE_URL dan SUPABASE_KEY belum tersedia di Streamlit secrets atau environment."
+        )
+
+    return supabase_url.rstrip("/"), supabase_key
+
+def post_supabase_backup(snapshot):
+    supabase_url, supabase_key = get_supabase_config()
+    response = requests.post(
+        f"{supabase_url}/rest/v1/app_backups",
+        json={"data": snapshot},
+        headers={
+            "apikey": supabase_key,
+            "Authorization": f"Bearer {supabase_key}",
+            "Content-Type": "application/json",
+            "Prefer": "return=minimal",
+        },
+        timeout=(10, 120),
+    )
+    try:
+        response.raise_for_status()
+    except requests.HTTPError as exc:
+        raise RuntimeError(
+            f"Supabase mengembalikan HTTP {response.status_code}: {response.text[:500]}"
+        ) from exc
+
+def get_latest_supabase_backup():
+    supabase_url, supabase_key = get_supabase_config()
+    response = requests.get(
+        f"{supabase_url}/rest/v1/app_backups",
+        params={
+            "select": "id,created_at,data",
+            "order": "created_at.desc,id.desc",
+            "limit": "1",
+        },
+        headers={
+            "apikey": supabase_key,
+            "Authorization": f"Bearer {supabase_key}",
+        },
+        timeout=(10, 120),
+    )
+    try:
+        response.raise_for_status()
+    except requests.HTTPError as exc:
+        raise RuntimeError(
+            f"Supabase mengembalikan HTTP {response.status_code}: {response.text[:500]}"
+        ) from exc
+
+    try:
+        backups = response.json()
+    except ValueError as exc:
+        raise RuntimeError("Supabase tidak mengembalikan JSON yang valid.") from exc
+
+    if not isinstance(backups, list):
+        raise RuntimeError("Format respons backup Supabase tidak valid.")
+    if not backups:
+        raise RuntimeError("Belum ada backup yang tersimpan di Supabase.")
+    if not isinstance(backups[0], dict) or not isinstance(backups[0].get("data"), dict):
+        raise RuntimeError("Isi backup terbaru di Supabase tidak valid.")
+    return backups[0]
+
+def restore_supabase_backup(snapshot):
+    if not isinstance(snapshot, dict) or snapshot.get("backup_version") != 1:
+        raise RuntimeError("Versi atau format backup Supabase tidak didukung.")
+
+    datasets = snapshot.get("datasets")
+    master_data = snapshot.get("master_data")
+    if not isinstance(datasets, dict) or not isinstance(master_data, dict):
+        raise RuntimeError("Struktur data backup Supabase tidak lengkap.")
+
+    dataset_specs = {
+        "rekap_laporan": (DB_FILE, EXPECTED_COLUMNS, "csv"),
+        "rekap_supervisi": (DB_SUPERVISI_KONTAK_FILE, EXPECTED_SUPERVISI_COLUMNS, "csv"),
+        "jadwal_spg": (JADWAL_SPG_FILE, None, "excel"),
+        "master_warkop": (MASTER_LOKASI_FILE, None, "excel"),
+    }
+    file_contents = {}
+    for dataset_name, (file_path, expected_columns, file_type) in dataset_specs.items():
+        rows = datasets.get(dataset_name)
+        if not isinstance(rows, list):
+            raise RuntimeError(f"Data `{dataset_name}` tidak ditemukan pada backup Supabase.")
+        dataframe = sheet_rows_to_df(rows, expected_columns)
+        if file_type == "csv":
+            file_contents[file_path] = dataframe.to_csv(index=False).encode("utf-8")
+        else:
+            excel_buffer = BytesIO()
+            dataframe.to_excel(excel_buffer, index=False)
+            file_contents[file_path] = excel_buffer.getvalue()
+
+    master_file_paths = {
+        "nama_spg": MASTER_SPG_FILE,
+        "nama_team": MASTER_TEAM_NAME_FILE,
+        "team_brand": MASTER_TEAM_BRAND_FILE,
+        "brand_rokok": MASTER_BRAND_FILE,
+        "target_brand": MASTER_TARGET_FILE,
+        "plat_kendaraan": MASTER_PLAT_FILE,
+        "jadwal_detail": SCHEDULE_DETAIL_FILE,
+    }
+    files_to_remove = []
+    for master_name, file_path in master_file_paths.items():
+        if master_name not in master_data:
+            raise RuntimeError(f"Data master `{master_name}` tidak ditemukan pada backup Supabase.")
+        master_value = master_data[master_name]
+        if master_value is None:
+            files_to_remove.append(file_path)
+        else:
+            file_contents[file_path] = json.dumps(
+                master_value, ensure_ascii=False, indent=2
+            ).encode("utf-8")
+
+    staged_files = {}
+    try:
+        for file_path, content in file_contents.items():
+            with tempfile.NamedTemporaryFile(
+                mode="wb",
+                dir=os.path.dirname(os.path.abspath(file_path)),
+                prefix=f".{os.path.basename(file_path)}.",
+                suffix=".tmp",
+                delete=False,
+            ) as staged_file:
+                staged_file.write(content)
+                staged_files[file_path] = staged_file.name
+
+        for file_path, staged_path in staged_files.items():
+            os.replace(staged_path, file_path)
+        for file_path in files_to_remove:
+            if os.path.exists(file_path):
+                os.remove(file_path)
+    finally:
+        for staged_path in staged_files.values():
+            if os.path.exists(staged_path):
+                os.remove(staged_path)
+
+def render_google_sheet_backup_controls():
+    with st.expander("☁️ Backup & Load Data", expanded=False):
+        st.caption("Backup data aplikasi ke Google Spreadsheet atau Supabase.")
+
+        col_backup_gs, col_backup_supabase = st.columns(2)
+        with col_backup_gs:
+            btn_backup_gs = st.button(
+                "⬆️ Backup ke Sheet",
+                use_container_width=True,
+                key="backup_google_sheet",
+            )
+        with col_backup_supabase:
+            btn_backup_supabase = st.button(
+                "⬆️ Backup ke Supabase",
+                use_container_width=True,
+                key="backup_supabase",
+            )
+        col_load_gs, col_load_supabase = st.columns(2)
+        with col_load_gs:
+            btn_load_gs = st.button(
+                "⬇️ Load dari Sheet",
+                use_container_width=True,
+                key="load_google_sheet",
+            )
+        with col_load_supabase:
+            btn_load_supabase = st.button(
+                "⬇️ Load dari Supabase",
+                use_container_width=True,
+                key="load_supabase",
+            )
+
+        if btn_backup_gs:
+            try:
+                with st.spinner("Mem-backup data ke Google Sheet..."):
+                    df_rekap = pd.read_csv(DB_FILE) if os.path.exists(DB_FILE) else pd.DataFrame(columns=EXPECTED_COLUMNS)
+                    df_sup = pd.read_csv(DB_SUPERVISI_KONTAK_FILE) if os.path.exists(DB_SUPERVISI_KONTAK_FILE) else pd.DataFrame(columns=EXPECTED_SUPERVISI_COLUMNS)
+                    df_jdw = pd.read_excel(JADWAL_SPG_FILE) if os.path.exists(JADWAL_SPG_FILE) else pd.DataFrame()
+                    df_wrk = pd.read_excel(MASTER_LOKASI_FILE) if os.path.exists(MASTER_LOKASI_FILE) else pd.DataFrame()
+
+                    payload = {
+                        "action": "backup",
+                        "rekap_laporan": df_to_sheet_rows(df_rekap),
+                        "rekap_supervisi": df_to_sheet_rows(df_sup),
+                        "jadwal_spg": df_to_sheet_rows(df_jdw),
+                        "master_warkop": df_to_sheet_rows(df_wrk),
+                    }
+
+                    res_json = post_google_sheet(payload)
+                    if res_json.get("status") == "success":
+                        st.success("✅ " + res_json.get("message", "Backup berhasil!"))
+                    else:
+                        st.error("❌ " + res_json.get("message", "Gagal backup."))
+            except Exception as e:
+                st.error(f"Error backup: {e}")
+
+        if btn_backup_supabase:
+            try:
+                with st.spinner("Mem-backup data ke Supabase..."):
+                    snapshot = load_supabase_backup_data()
+                    post_supabase_backup(snapshot)
+                    st.success("✅ Backup berhasil disimpan ke Supabase.")
+            except Exception as e:
+                st.error(f"Error backup Supabase: {e}")
+
+        if btn_load_supabase:
+            try:
+                with st.spinner("Memuat backup terbaru dari Supabase..."):
+                    backup = get_latest_supabase_backup()
+                    restore_supabase_backup(backup["data"])
+                    st.cache_data.clear()
+                    st.success(
+                        f"✅ Backup Supabase {backup.get('created_at', '')} "
+                        "berhasil dimuat. Data lokal telah diganti."
+                    )
+                    st.rerun()
+            except Exception as e:
+                st.error(f"Error load Supabase: {e}")
+
+        if btn_load_gs:
+            try:
+                with st.spinner("Memuat data dari Google Sheet..."):
+                    res_json = post_google_sheet({"action": "load"})
+                    if res_json.get("status") == "success":
+                        data_gs = res_json.get("data", {})
+
+                        if "rekap_laporan" in data_gs and len(data_gs["rekap_laporan"]) > 0:
+                            sheet_rows_to_df(data_gs["rekap_laporan"], EXPECTED_COLUMNS).to_csv(DB_FILE, index=False)
+                        if "rekap_supervisi" in data_gs and len(data_gs["rekap_supervisi"]) > 0:
+                            sheet_rows_to_df(data_gs["rekap_supervisi"], EXPECTED_SUPERVISI_COLUMNS).to_csv(DB_SUPERVISI_KONTAK_FILE, index=False)
+                        if "jadwal_spg" in data_gs and len(data_gs["jadwal_spg"]) > 0:
+                            sheet_rows_to_df(data_gs["jadwal_spg"]).to_excel(JADWAL_SPG_FILE, index=False)
+                        if "master_warkop" in data_gs and len(data_gs["master_warkop"]) > 0:
+                            sheet_rows_to_df(data_gs["master_warkop"]).to_excel(MASTER_LOKASI_FILE, index=False)
+
+                        st.cache_data.clear()
+                        st.success("✅ Data berhasil dimuat dari Google Sheet!")
+                        st.rerun()
+                    else:
+                        st.error("❌ " + res_json.get("message", "Gagal load."))
+            except Exception as e:
+                st.error(f"Error load: {e}")
 
 # ====================================================
 # FUNGSI BANTUAN UMUM
@@ -304,6 +661,7 @@ def load_master_wilayah(kota):
 # ====================================================
 DEFAULT_BRANDS = [
     "D.Super 12",
+    "D.Super Kretek",
     "D.76 Apel",
     "D.76 Apel Royal",
     "Black Matcha K12",
@@ -320,10 +678,14 @@ def load_master_team_names():
         try:
             with open(MASTER_TEAM_NAME_FILE, "r", encoding="utf-8") as f:
                 data = json.load(f)
+                if not isinstance(data, dict):
+                    return default_teams
                 for i in range(1, 21):
                     key = f"Team SPG {i}"
                     if key not in data:
                         data[key] = key
+                    else:
+                        data[key] = str(data[key]).strip()
                 return data
         except Exception:
             return default_teams
@@ -332,9 +694,24 @@ def load_master_team_names():
         return default_teams
 
 def save_master_team_names(team_names_dict):
+    active_names = [str(name).strip() for name in team_names_dict.values() if str(name).strip()]
+    if not active_names:
+        st.error("Minimal satu nama team harus diisi. Unggah jadwal SPG untuk mengatur nama team otomatis.")
+        return False
+    if len({name.casefold() for name in active_names}) != len(active_names):
+        st.error("Nama team tidak boleh duplikat.")
+        return False
     try:
         with open(MASTER_TEAM_NAME_FILE, "w", encoding="utf-8") as f:
-            json.dump(team_names_dict, f, ensure_ascii=False, indent=2)
+            json.dump(
+                {
+                    f"Team SPG {i}": str(team_names_dict.get(f"Team SPG {i}", "")).strip()
+                    for i in range(1, 21)
+                },
+                f,
+                ensure_ascii=False,
+                indent=2,
+            )
         return True
     except Exception as e:
         st.error(f"Gagal menyimpan master nama team: {e}")
@@ -361,14 +738,14 @@ def save_master_brands(brands):
 def load_master_team_brands():
     current_brands = load_master_brands()
     team_map = load_master_team_names()
-    default_teams = {team_map.get(f"Team SPG {i}", f"Team SPG {i}"): current_brands.copy() for i in range(1, 21)}
+    active_team_names = [team_map[f"Team SPG {i}"] for i in range(1, 21) if team_map[f"Team SPG {i}"]]
+    default_teams = {team_name: current_brands.copy() for team_name in active_team_names}
     if os.path.exists(MASTER_TEAM_BRAND_FILE):
         try:
             with open(MASTER_TEAM_BRAND_FILE, "r", encoding="utf-8") as f:
                 data = json.load(f)
-                for i in range(1, 21):
+                for i, t_name in enumerate(active_team_names, start=1):
                     t_key = f"Team SPG {i}"
-                    t_name = team_map.get(t_key, t_key)
                     if t_name not in data and t_key not in data:
                         data[t_name] = current_brands.copy()
                 return data
@@ -530,13 +907,25 @@ def get_schedule_info_for_team(team_name):
 # TARGET BRAND PER SPG / TEAM
 # ====================================================
 DEFAULT_TARGET_RULES = {
-    "Black Matcha K12": {"target_spg": 50, "target_team": 100},
-    "D.Super 12": {"target_spg": 40, "target_team": 80},
+    "Black Matcha K12": {"target_spg": 40, "target_team": 80, "group": "Black_Matcha"},
+    "D.Super 12": {"target_spg": 40, "target_team": 80, "group": "D_Super"},
+    "D.Super Kretek": {"target_spg": 40, "target_team": 80, "group": "D_Super"},
     "D.76 Apel Royal": {"target_spg": 40, "target_team": 80},
     "D.76 Apel": {"target_spg": 30, "target_team": 60},
     "Djarum 76 Aksara": {"target_spg": 30, "target_team": 60},
-    "Djarum Black Siro": {"target_spg": 40, "target_team": 80, "group": "Black_Siro_Kuro"},
-    "Djarum Black Kuro": {"target_spg": 40, "target_team": 80, "group": "Black_Siro_Kuro"},
+    "Black Matcha Siro": {"target_spg": 40, "target_team": 80, "group": "Black_Matcha"},
+    "Black Matcha Kuro": {"target_spg": 40, "target_team": 80, "group": "Black_Matcha"},
+}
+
+TARGET_GROUP_LABELS = {
+    "D_Super": "D. Super (Gabungan)",
+    "Black_Matcha": "Black Matcha (Gabungan)",
+    "Black_Siro_Kuro": "Black Matcha (Gabungan)",
+}
+TARGET_GROUP_OPTIONS = {
+    "": "Tidak digabungkan",
+    "D_Super": TARGET_GROUP_LABELS["D_Super"],
+    "Black_Matcha": TARGET_GROUP_LABELS["Black_Matcha"],
 }
 
 def load_target_rules():
@@ -554,12 +943,32 @@ def save_target_rules(rules):
 
 TARGET_RULES = load_target_rules()
 
+def normalize_brand_key(brand):
+    return "".join(str(brand).casefold().split())
+
+def get_brand_target_rule(brand):
+    brand_key = normalize_brand_key(brand)
+    return next(
+        (rule for rule_brand, rule in TARGET_RULES.items() if normalize_brand_key(rule_brand) == brand_key),
+        {},
+    )
+
+def clean_brand_target_name(brand):
+    group = get_brand_target_rule(brand).get("group")
+    return TARGET_GROUP_LABELS.get(group, brand)
+
 def get_group_target(group_name, target_key, default_val):
-    rules = load_target_rules()
-    for brand, rule in rules.items():
+    for brand, rule in TARGET_RULES.items():
         if rule.get("group") == group_name and target_key in rule:
             return rule[target_key]
     return default_val
+
+def get_target_for_brand(brand, target_key, default_val):
+    rule = get_brand_target_rule(brand)
+    group = rule.get("group")
+    if group:
+        return get_group_target(group, target_key, default_val)
+    return rule.get(target_key, default_val)
 
 def style_status_target(val):
     if val == "Not Achieved":
@@ -651,7 +1060,7 @@ if not st.session_state["logged_in"]:
             if st.button("📍 Master Lokasi Warkop (Excel)", use_container_width=True):
                 st.session_state["admin_view"] = "Master_Lokasi"
                 st.rerun()
-            if st.button("📅 Monitoring Jadwal SPG (Kecamatan, Team & Tanggal)", use_container_width=True):
+            if st.button("📅 Entry & Monitoring Jadwal SPG", use_container_width=True):
                 st.session_state["admin_view"] = "Master_Jadwal_Excel"
                 st.rerun()
             if st.button("📊 Analitik & Rekap All", use_container_width=True):
@@ -686,7 +1095,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
                 key = f"Team SPG {i}"
                 current_val = team_names_map.get(key, key)
                 new_val = st.text_input(f"Nama untuk `{key}`", value=current_val, key=f"input_team_name_{i}")
-                updated_names[key] = new_val.strip() if new_val.strip() else key
+                updated_names[key] = new_val.strip()
 
             btn_save_team_names = st.form_submit_button("💾 Simpan Perubahan Nama Team", type="primary")
 
@@ -753,7 +1162,18 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
         all_available_brands = load_master_brands()
         team_brands_dict = load_master_team_brands()
         team_name_mapping = load_master_team_names()
-        team_options = [team_name_mapping.get(f"Team SPG {i}", f"Team SPG {i}") for i in range(1, 21)]
+        active_team_slots = [
+            (f"Team SPG {i}", team_name_mapping[f"Team SPG {i}"])
+            for i in range(1, 21)
+            if team_name_mapping[f"Team SPG {i}"]
+        ]
+        team_options = [team_name for _, team_name in active_team_slots]
+        if not team_options:
+            st.info("Belum ada nama team. Unggah jadwal SPG untuk mengisi daftar team.")
+            if st.button("⬅️ Kembali ke Dashboard", key="btn_back_master_team_empty"):
+                st.session_state["admin_view"] = "Dashboard"
+                st.rerun()
+            st.stop()
 
         selected_team_config = st.selectbox(
             "Pilih Team SPG untuk Konfigurasi Brand",
@@ -784,9 +1204,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
         st.markdown("#### 📋 Ringkasan Alokasi Brand Seluruh Team (1 - 20)")
         fresh_team_brands = load_master_team_brands()
         summary_list = []
-        for i in range(1, 21):
-            t_key = f"Team SPG {i}"
-            t_name = team_name_mapping.get(t_key, t_key)
+        for t_key, t_name in active_team_slots:
             b_list = fresh_team_brands.get(t_name, fresh_team_brands.get(t_key, []))
             summary_list.append({
                 "Team": t_name,
@@ -856,7 +1274,11 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
             new_brand_name = st.text_input("Nama Merek Rokok Baru", placeholder="Contoh: Djarum Super Extra")
             t_spg = st.number_input("Target per SPG (Bungkus)", min_value=1, value=30, step=1)
             t_team = st.number_input("Target per Team (Bungkus)", min_value=1, value=60, step=1)
-            is_grouped = st.checkbox("Masukkan ke Grup Gabungan Siro / Kuro?", value=False)
+            new_group = st.selectbox(
+                "Grup target gabungan",
+                options=list(TARGET_GROUP_OPTIONS),
+                format_func=lambda group: TARGET_GROUP_OPTIONS[group],
+            )
             btn_add_brand = st.form_submit_button("➕ Tambah Merek Rokok")
 
             if btn_add_brand:
@@ -869,8 +1291,8 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
                             "target_spg": int(t_spg),
                             "target_team": int(t_team),
                         }
-                        if is_grouped:
-                            target_rules_data[b_clean]["group"] = "Black_Siro_Kuro"
+                        if new_group:
+                            target_rules_data[b_clean]["group"] = new_group
                         save_target_rules(target_rules_data)
                         st.success(f"✅ Merek rokok '{b_clean}' berhasil ditambahkan!")
                         st.rerun()
@@ -888,8 +1310,19 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
                 with st.form(f"form_edit_target_{idx}"):
                     edit_tspg = st.number_input("Target per SPG (Bungkus)", min_value=1, value=int(rule.get("target_spg", 25)), key=f"tspg_{idx}")
                     edit_tteam = st.number_input("Target per Team (Bungkus)", min_value=1, value=int(rule.get("target_team", 50)), key=f"tteam_{idx}")
-                    has_group = "group" in rule and rule["group"] == "Black_Siro_Kuro"
-                    edit_group = st.checkbox("Masuk Grup Gabungan Siro / Kuro", value=has_group, key=f"grp_{idx}")
+                    rule_group = rule.get("group")
+                    if rule_group == "Black_Siro_Kuro":
+                        rule_group = "Black_Matcha"
+                    group_index = list(TARGET_GROUP_OPTIONS).index(
+                        rule_group if rule_group in TARGET_GROUP_OPTIONS else ""
+                    )
+                    edit_group = st.selectbox(
+                        "Grup target gabungan",
+                        options=list(TARGET_GROUP_OPTIONS),
+                        index=group_index,
+                        format_func=lambda group: TARGET_GROUP_OPTIONS[group],
+                        key=f"grp_{idx}",
+                    )
 
                     col_ed1, col_ed2 = st.columns(2)
                     with col_ed1:
@@ -903,7 +1336,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
                             "target_team": int(edit_tteam),
                         }
                         if edit_group:
-                            target_rules_data[b]["group"] = "Black_Siro_Kuro"
+                            target_rules_data[b]["group"] = edit_group
                         save_target_rules(target_rules_data)
                         st.success(f"✅ Target brand '{b}' berhasil diperbarui!")
                         st.rerun()
@@ -977,203 +1410,8 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
 
     # --- MONITORING JADWAL SPG ---
     elif st.session_state["admin_view"] == "Master_Jadwal_Excel":
-        st.markdown("## 📅 Monitoring Jadwal SPG (Kecamatan, Team & Tanggal)")
-        st.caption(
-            "Monitoring, tambah, edit, hapus baris, dan simpan jadwal SPG harian "
-            "berdasarkan Kecamatan, Nama Team, dan Tanggal."
-        )
-
-        df_jadwal_raw_file = load_jadwal_spg()
-
-        tab_j_tambah, tab_j_hapus = st.tabs(
-            ["➕ Tambah Jadwal Baru", "🗑️ Hapus Baris / Data Jadwal"]
-        )
-
-        with tab_j_tambah:
-            with st.form("form_tambah_jadwal_baru"):
-                col_jt1, col_jt2, col_jt3, col_jt4 = st.columns(4)
-                with col_jt1:
-                    input_kota_j = st.selectbox("Kota", options=["Surabaya", "Gresik"], key="add_j_kota")
-                
-                gdf_geojson_admin = load_master_wilayah(input_kota_j)
-                daftar_kec_geojson = []
-                if gdf_geojson_admin is not None:
-                    col_kec_gj = next((c for c in ["nm_kecamatan", "KECAMATAN", "kecamatan", "Name", "NAME"] if c in gdf_geojson_admin.columns), None)
-                    if col_kec_gj:
-                        daftar_kec_geojson = sorted(gdf_geojson_admin[col_kec_gj].dropna().unique().tolist())
-                if not daftar_kec_geojson:
-                    daftar_kec_geojson = ["Tegalsari", "Wonokromo", "Rungkut", "Asemrowo", "Benowo"]
-
-                with col_jt2:
-                    input_kec_list_j = st.multiselect("Pilih Kecamatan (Bisa Lebih dari 1)", options=daftar_kec_geojson, key="add_j_kec_multi")
-                with col_jt3:
-                    input_tgl_j = st.date_input("Tanggal Jadwal", key="add_j_tgl")
-                with col_jt4:
-                    input_team_j = st.text_input("Nama Team", placeholder="Cth: Team SPG 1", key="add_j_team")
-                  
-                btn_submit_new_jadwal = st.form_submit_button("➕ Masukkan ke Tabel Jadwal", type="primary")
-                
-                if btn_submit_new_jadwal:
-                    if input_kec_list_j and input_team_j.strip():
-                        tgl_str_col = input_tgl_j.strftime("%Y-%m-%d 00:00:00")
-                        
-                        for input_kec_j in input_kec_list_j:
-                            if not df_jadwal_raw_file.empty:
-                                meta_cols = [c for c in df_jadwal_raw_file.columns if str(c).strip().lower() in ["kota", "kecamatan"]]
-                                if tgl_str_col not in df_jadwal_raw_file.columns:
-                                    df_jadwal_raw_file[tgl_str_col] = "-"
-                              
-                                kec_col_target = meta_cols[1] if len(meta_cols) > 1 else "Kecamatan"
-                                kota_col_target = meta_cols[0] if len(meta_cols) > 0 else "Kota"
-                              
-                                matched_idx = df_jadwal_raw_file[
-                                    df_jadwal_raw_file[kec_col_target].astype(str).str.strip().str.lower() == input_kec_j.strip().lower()
-                                ].index
-                              
-                                if len(matched_idx) > 0:
-                                    df_jadwal_raw_file.loc[matched_idx[0], tgl_str_col] = input_team_j.strip()
-                                else:
-                                    new_row_j = {kota_col_target: input_kota_j, kec_col_target: input_kec_j.strip(), tgl_str_col: input_team_j.strip()}
-                                    df_jadwal_raw_file = pd.concat([df_jadwal_raw_file, pd.DataFrame([new_row_j])], ignore_index=True)
-                            else:
-                                df_jadwal_raw_file = pd.DataFrame(columns=["Kota", "Kecamatan", tgl_str_col])
-                                new_row_j = {"Kota": input_kota_j, "Kecamatan": input_kec_j.strip(), tgl_str_col: input_team_j.strip()}
-                                df_jadwal_raw_file = pd.DataFrame([new_row_j])
-                          
-                        try:
-                            df_jadwal_raw_file.to_excel(JADWAL_SPG_FILE, index=False)
-                            st.success(f"✅ Jadwal untuk {len(input_kec_list_j)} kecamatan terpilih ({input_team_j}) berhasil ditambahkan!")
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"Gagal menyimpan ke file `Jadwal SPG.xlsx`: {e}")
-                    else:
-                        st.warning("Mohon pilih minimal 1 Kecamatan dan isi Nama Team.")
-
-        with tab_j_hapus:
-            st.markdown("##### 🗑️ Hapus Baris Jadwal Berdasarkan Pilihan")
-            if not df_jadwal_raw_file.empty:
-                meta_cols_h = [c for c in df_jadwal_raw_file.columns if str(c).strip().lower() in ["kota", "kecamatan"]]
-                date_cols_h = [c for c in df_jadwal_raw_file.columns if c not in meta_cols_h]
-                
-                melted_h = df_jadwal_raw_file.melt(id_vars=meta_cols_h, value_vars=date_cols_h, var_name="Kolom_Tanggal", value_name="Team")
-                melted_h = melted_h.dropna(subset=["Team"])
-                melted_h = melted_h[melted_h["Team"].astype(str).str.strip().str.lower() != "nan"]
-                melted_h = melted_h[melted_h["Team"].astype(str).str.strip() != "-"]
-                melted_h["Tgl_Fmt"] = pd.to_datetime(melted_h["Kolom_Tanggal"], errors="coerce").dt.strftime("%d-%m-%Y")
-                
-                kec_c_name = meta_cols_h[1] if len(meta_cols_h) > 1 else "Kecamatan"
-                
-                opsi_hapus_jadwal = [
-                    f"Baris #{idx} | Tgl: {row['Tgl_Fmt']} | Kec: {row[kec_c_name]} | Team: {row['Team']}"
-                    for idx, row in melted_h.iterrows()
-                ]
-                
-                selected_j_to_delete = st.multiselect("Pilih baris jadwal yang ingin dihapus:", options=opsi_hapus_jadwal, key="ms_del_jadwal_rows")
-                
-                if st.button("🗑️ Hapus Baris Jadwal Terpilih", type="primary", key="btn_exec_del_jadwal"):
-                    if selected_j_to_delete:
-                        indices_to_clear = [int(item.split(" | ")[0].replace("Baris #", "")) for item in selected_j_to_delete]
-                        
-                        for idx_to_clear in indices_to_clear:
-                            col_tgl_target = melted_h.loc[idx_to_clear, "Kolom_Tanggal"]
-                            kec_val = melted_h.loc[idx_to_clear, kec_c_name]
-                            match_row_idx = df_jadwal_raw_file[df_jadwal_raw_file[kec_c_name].astype(str).str.strip() == str(kec_val).strip()].index
-                            if len(match_row_idx) > 0:
-                                df_jadwal_raw_file.loc[match_row_idx[0], col_tgl_target] = "-"
-                                
-                        try:
-                            df_jadwal_raw_file.to_excel(JADWAL_SPG_FILE, index=False)
-                            st.success("✅ Baris jadwal terpilih berhasil dihapus!")
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"Gagal memperbarui file Excel: {e}")
-                    else:
-                        st.warning("Silakan pilih minimal 1 baris jadwal yang ingin dihapus.")
-            else:
-                st.info("Belum ada data jadwal untuk dihapus.")
-
-        st.markdown("---")
-
-        if not df_jadwal_raw_file.empty:
-            meta_cols = [c for c in df_jadwal_raw_file.columns if str(c).strip().lower() in ["kota", "kecamatan"]]
-            date_cols_raw = [c for c in df_jadwal_raw_file.columns if c not in meta_cols]
-
-            melted_jadwal = df_jadwal_raw_file.melt(
-                id_vars=meta_cols,
-                value_vars=date_cols_raw,
-                var_name="Kolom_Tanggal",
-                value_name="Team"
-            )
-            
-            melted_jadwal["Tanggal_Obj"] = pd.to_datetime(melted_jadwal["Kolom_Tanggal"], errors="coerce")
-            melted_jadwal["Tanggal"] = melted_jadwal["Tanggal_Obj"].dt.strftime("%d-%m-%Y")
-            
-            periods = []
-            for dt_val in melted_jadwal["Tanggal_Obj"]:
-                p_label, _ = get_custom_week_info(dt_val)
-                periods.append(p_label)
-            melted_jadwal["Minggu"] = periods
-
-            kota_col_name = meta_cols[0] if len(meta_cols) > 0 else "Kota"
-            kec_col_name = meta_cols[1] if len(meta_cols) > 1 else "Kecamatan"
-
-            display_jadwal = melted_jadwal[[
-                "Minggu", "Tanggal", kota_col_name, kec_col_name, "Team"
-            ]].copy()
-            display_jadwal = display_jadwal.dropna(subset=["Team"])
-            display_jadwal = display_jadwal[display_jadwal["Team"].astype(str).str.strip().str.lower() != "nan"]
-            display_jadwal = display_jadwal[display_jadwal["Team"].astype(str).str.strip() != "-"]
-
-            all_weeks_jadwal = sorted(display_jadwal["Minggu"].dropna().unique().tolist(), key=lambda x: int(x) if str(x).isdigit() else 0, reverse=True)
-            selected_week_filter = st.multiselect(
-                "Filter Minggu (Nomor Minggu, cth: 47)",
-                options=all_weeks_jadwal,
-                default=all_weeks_jadwal,
-                key="filter_monitoring_jadwal_week"
-            )
-
-            if selected_week_filter:
-                display_jadwal_filtered = display_jadwal[display_jadwal["Minggu"].isin(selected_week_filter)]
-            else:
-                display_jadwal_filtered = display_jadwal.copy()
-
-            st.markdown("#### 📋 Tabel Jadwal SPG Aktif (Dapat Diedit)")
-            edited_jadwal_table = st.data_editor(
-                display_jadwal_filtered,
-                num_rows="dynamic",
-                use_container_width=True,
-                key="editor_monitoring_jadwal_spg"
-            )
-
-            if st.button("💾 Simpan Perubahan Jadwal", type="primary", key="btn_save_edit_jadwal_table"):
-                try:
-                    for _, row_ed in edited_jadwal_table.iterrows():
-                        tgl_fmt_str = row_ed["Tanggal"]
-                        kec_val_ed = row_ed[kec_col_name]
-                        team_val_ed = row_ed["Team"]
-                        
-                        for col_c in date_cols_raw:
-                            try:
-                                parsed_c_tgl = pd.to_datetime(col_c).strftime("%d-%m-%Y")
-                                if parsed_c_tgl == tgl_fmt_str:
-                                    match_row_ed = df_jadwal_raw_file[df_jadwal_raw_file[kec_col_name].astype(str).str.strip() == str(kec_val_ed).strip()].index
-                                    if len(match_row_ed) > 0:
-                                        df_jadwal_raw_file.loc[match_row_ed[0], col_c] = team_val_ed
-                            except Exception:
-                                continue
-                            
-                    df_jadwal_raw_file.to_excel(JADWAL_SPG_FILE, index=False)
-                    st.success("✅ Perubahan jadwal berhasil disimpan ke file `Jadwal SPG.xlsx`!")
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Gagal menyimpan perubahan jadwal: {e}")
-        else:
-            st.warning("File `Jadwal SPG.xlsx` kosong atau tidak ditemukan.")
-
-        st.markdown("---")
-        if st.button("⬅️ Kembali ke Dashboard"):
-            st.session_state["admin_view"] = "Dashboard"
-            st.rerun()
+        st.markdown("## 📅 Entry & Monitoring Jadwal SPG (Kecamatan, Team & Tanggal)")
+        render_schedule_entry()
         st.stop()
 
     # --- ANALITIK ---
@@ -1365,7 +1603,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
         if st.button("📍 Lokasi Warkop (Excel)\nKelola dari Master Warkop", use_container_width=True):
             st.session_state["admin_view"] = "Master_Lokasi"
             st.rerun()
-        if st.button("📅 Jadwal SPG\nMonitoring semua Team", use_container_width=True):
+        if st.button("📅 Entry & Monitoring Jadwal SPG\nSemua Team", use_container_width=True):
             st.session_state["admin_view"] = "Master_Jadwal_Excel"
             st.rerun()
 
@@ -1384,6 +1622,33 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
         if st.button("⬅️ Keluar Admin", use_container_width=True):
             st.session_state["admin_logged_in"] = False
             st.rerun()
+
+    st.markdown("---")
+    st.markdown("#### ☁️ Backup & Load Data")
+    render_google_sheet_backup_controls()
+
+    st.markdown("---")
+    st.markdown("#### 📥 Unduh Data Utama")
+    st.caption("Unduhan ini hanya tersedia dari Dashboard Admin.")
+    col_download_laporan, col_download_supervisi = st.columns(2)
+    with col_download_laporan:
+        st.download_button(
+            "⬇️ Download Rekap Laporan SPG",
+            data=load_database().to_csv(index=False).encode("utf-8-sig"),
+            file_name=DB_FILE,
+            mime="text/csv",
+            use_container_width=True,
+            key="download_rekap_laporan_admin",
+        )
+    with col_download_supervisi:
+        st.download_button(
+            "⬇️ Download Rekap Kontak Supervisi",
+            data=load_supervisi_database().to_csv(index=False).encode("utf-8-sig"),
+            file_name=DB_SUPERVISI_KONTAK_FILE,
+            mime="text/csv",
+            use_container_width=True,
+            key="download_rekap_supervisi_admin",
+        )
 
     st.markdown("---")
     st.markdown("#### 🌐 Ringkasan Cepat Data Masuk (All User)")
@@ -1414,10 +1679,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
             )
 
             def clean_brand_team_lb(b):
-                b_lower = str(b).lower()
-                if "siro" in b_lower or "kuro" in b_lower:
-                    return "Black Siro & Kuro (Gabungan)"
-                return b
+                return clean_brand_target_name(b)
 
             df_today_lb["Brand_Rokok_Clean"] = df_today_lb["Brand_Rokok"].apply(clean_brand_team_lb)
 
@@ -1429,9 +1691,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
             )
 
             def get_team_target_lb(brand):
-                if brand == "Black Siro & Kuro (Gabungan)":
-                    return get_group_target("Black_Siro_Kuro", "target_team", 80)
-                return TARGET_RULES.get(brand, {"target_team": 50}).get("target_team", 50)
+                return get_target_for_brand(brand, "target_team", 50)
 
             df_today_lb["Target_Team"] = df_today_lb["Brand_Rokok"].apply(get_team_target_lb)
             target_hari_ini = int(df_today_lb["Target_Team"].sum())
@@ -1551,10 +1811,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
             )
 
             def clean_brand_team(b):
-                b_lower = str(b).lower()
-                if "siro" in b_lower or "kuro" in b_lower:
-                    return "Black Siro & Kuro (Gabungan)"
-                return b
+                return clean_brand_target_name(b)
 
             df_team_leaderboard["Brand_Rokok_Clean"] = df_team_leaderboard["Brand_Rokok"].apply(clean_brand_team)
 
@@ -1566,9 +1823,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
             )
 
             def get_team_target(brand):
-                if brand == "Black Siro & Kuro (Gabungan)":
-                    return get_group_target("Black_Siro_Kuro", "target_team", 80)
-                return TARGET_RULES.get(brand, {"target_team": 50}).get("target_team", 50)
+                return get_target_for_brand(brand, "target_team", 50)
 
             df_team_leaderboard["Target_Team"] = df_team_leaderboard["Brand_Rokok"].apply(get_team_target)
             df_team_leaderboard["Status_Target_Team"] = df_team_leaderboard.apply(
@@ -1937,7 +2192,14 @@ if not st.session_state["logged_in"]:
 
         with st.container():
             team_name_mapping = load_master_team_names()
-            list_team = [team_name_mapping.get(f"Team SPG {i}", f"Team SPG {i}") for i in range(1, 21)]
+            list_team = [
+                team_name_mapping[f"Team SPG {i}"]
+                for i in range(1, 21)
+                if team_name_mapping[f"Team SPG {i}"]
+            ]
+            if not list_team:
+                st.info("Belum ada nama team aktif. Admin perlu mengunggah jadwal SPG terlebih dahulu.")
+                st.stop()
             pilihan_user = st.selectbox(
                 "👤 Pilih Nama Team",
                 list_team,
@@ -1945,24 +2207,27 @@ if not st.session_state["logged_in"]:
                 on_change=reset_session_on_user_change,
             )
 
-            pilihan_plat_supervisi = ""
-            if st.session_state["login_mode"] == "Supervisi":
-                daftar_plat_master = load_master_plat_kendaraan()
-                if not daftar_plat_master:
-                    daftar_plat_master = ["L 1234 ABC", "L 1235 BCD"]
-                pilihan_plat_supervisi = st.selectbox(
-                    "🚗 Pilih Plat Nomor Kendaraan Operasional",
-                    daftar_plat_master,
-                    key="selected_plat_supervisi_login",
-                )
-
-            schedule_ok, schedule_warning_msg, auto_detected_kota, auto_kecamatan_list, _ = get_schedule_info_for_team(pilihan_user)
+            schedule_ok, schedule_warning_msg, auto_detected_kota, auto_kecamatan_list, matched_schedule_rows = get_schedule_info_for_team(pilihan_user)
+            scheduled_vehicles = []
+            if schedule_ok and st.session_state["login_mode"] == "Supervisi":
+                today_wib = (datetime.utcnow() + timedelta(hours=7)).date()
+                scheduled_vehicles = get_scheduled_vehicles(matched_schedule_rows, today_wib)
 
             if not schedule_ok:
                 st.error("⚠️ **Tidak Ada Jadwal Team Tersebut Untuk Hari Ini**")
             else:
                 st.info(f"🏙️ Wilayah Terdeteksi dari Jadwal Hari Ini: **{auto_detected_kota}**")
                 st.caption(f"📌 Kecamatan yang diijinkan hari ini: {', '.join(auto_kecamatan_list) if auto_kecamatan_list else '-'}")
+                if st.session_state["login_mode"] == "Supervisi":
+                    if len(scheduled_vehicles) == 1:
+                        st.info(f"🚗 Plat kendaraan otomatis sesuai jadwal: **{scheduled_vehicles[0]}**")
+                    elif not scheduled_vehicles:
+                        st.warning("Plat kendaraan belum diatur pada jadwal team hari ini. Lengkapi plat di menu Entry & Monitoring Jadwal SPG.")
+                    else:
+                        st.error(
+                            "Jadwal team hari ini memiliki lebih dari satu plat kendaraan "
+                            f"({', '.join(scheduled_vehicles)}). Samakan plat pada jadwal sebelum login Supervisi."
+                        )
 
             st.markdown("")
             btn_login = st.button(f"Masuk Aplikasi ({st.session_state['login_mode']})", type="primary", use_container_width=True)
@@ -1970,10 +2235,12 @@ if not st.session_state["logged_in"]:
             if btn_login:
                 if not schedule_ok:
                     st.error("❌ Akses ditolak: Tidak Ada Jadwal Team Tersebut Untuk Hari Ini.")
+                elif st.session_state["login_mode"] == "Supervisi" and len(scheduled_vehicles) != 1:
+                    st.error("❌ Akses Supervisi ditolak: plat kendaraan pada jadwal belum tersedia atau tidak konsisten.")
                 else:
                     st.session_state["logged_in"] = True
                     st.session_state["user_spg"] = pilihan_user
-                    st.session_state["plat_mobil"] = pilihan_plat_supervisi if st.session_state["login_mode"] == "Supervisi" else "-"
+                    st.session_state["plat_mobil"] = scheduled_vehicles[0] if st.session_state["login_mode"] == "Supervisi" else "-"
                     st.session_state["kota_kab"] = auto_detected_kota
                     st.rerun()
 
@@ -2395,10 +2662,7 @@ if not df_user_rekap.empty:
     )
 
     def clean_brand_spg(b):
-        b_lower = str(b).lower()
-        if "siro" in b_lower or "kuro" in b_lower:
-            return "Black Siro & Kuro (Gabungan)"
-        return b
+        return clean_brand_target_name(b)
 
     df_eval_spg["Brand_Rokok_Clean"] = df_eval_spg["Brand_Rokok"].apply(clean_brand_spg)
 
@@ -2414,9 +2678,7 @@ if not df_user_rekap.empty:
     )
 
     def get_spg_target(brand):
-        if brand == "Black Siro & Kuro (Gabungan)":
-            return get_group_target("Black_Siro_Kuro", "target_spg", 40)
-        return TARGET_RULES.get(brand, {"target_spg": 25}).get("target_spg", 25)
+        return get_target_for_brand(brand, "target_spg", 25)
 
     df_eval_spg["Target_SPG"] = df_eval_spg["Brand_Rokok"].apply(get_spg_target)
     df_eval_spg["Status_Target_SPG"] = df_eval_spg.apply(

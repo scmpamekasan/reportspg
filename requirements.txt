@@ -5,3 +5,4 @@ openpyxl
 streamlit-js-eval
 shapely
 pydeck
+supabase
