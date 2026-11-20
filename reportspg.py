@@ -1,12 +1,12 @@
 from datetime import date, datetime, timedelta
 from io import BytesIO
 import json
-import requests
 import os
 import tempfile
 import geopandas as gpd
 import pandas as pd
 import pydeck as pdk
+import requests
 from shapely.geometry import Point
 import streamlit as st
 from streamlit_js_eval import get_geolocation
@@ -22,6 +22,334 @@ st.set_page_config(
     layout="centered",
     initial_sidebar_state="auto",
 )
+
+# ====================================================
+# DEFINISI FILE DATABASE LOKAL & KONFIGURASI GOOGLE SHEET
+# ====================================================
+WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzk6tqiNonaArNjJt7X0IIhja_D7elgGLkNPE90xmDtvdHwNeq4VhZJQfUU2OE_jiA/exec"
+
+DB_FILE = "rekap_laporan_spg.csv"
+DB_SUPERVISI_KONTAK_FILE = "rekap_kontak_supervisi.csv"
+MASTER_BRAND_FILE = "master_brand_rokok.json"
+MASTER_TARGET_FILE = "master_target_brand.json"
+MASTER_LOKASI_FILE = "Master WarkopLKK.xlsx"
+MASTER_SPG_FILE = "master_nama_spg.json"
+MASTER_TEAM_BRAND_FILE = "master_team_brand.json"
+MASTER_PLAT_FILE = "master_plat_kendaraan.json"
+MASTER_TEAM_NAME_FILE = "master_nama_team.json"
+JADWAL_SPG_FILE = "Jadwal SPG.xlsx"
+
+EXPECTED_COLUMNS = [
+    "Waktu",
+    "Promotor",
+    "Plat_Mobil",
+    "Nama_SPG",
+    "Kota_Kab",
+    "Kecamatan",
+    "Warkop_LKK",
+    "Alamat_Warkop",
+    "Brand_Rokok",
+    "Nama_Konsumen",
+    "Gender",
+    "Range_Umur",
+    "No_HP",
+    "Instagram",
+    "Jumlah_Bungkus",
+    "Rokok_Asal_BUMO",
+    "Latitude",
+    "Longitude",
+]
+
+EXPECTED_SUPERVISI_COLUMNS = [
+    "Waktu",
+    "Promotor",
+    "Plat_Mobil",
+    "Kota_Kab",
+    "Kecamatan",
+    "Warkop_LKK",
+    "Alamat_Warkop",
+    "Jumlah_Kontak_Manual",
+]
+
+
+def df_to_sheet_rows(df: pd.DataFrame):
+    if df is None:
+        return []
+    columns = [str(column) for column in df.columns]
+    if df.empty:
+        return [columns] if columns else []
+
+    rows = []
+    for row in df.itertuples(index=False, name=None):
+        serialized_row = []
+        for value in row:
+            if pd.isna(value):
+                serialized_row.append("")
+            elif isinstance(value, (datetime, pd.Timestamp)):
+                serialized_row.append(value.strftime("%Y-%m-%d %H:%M:%S"))
+            elif isinstance(value, date):
+                serialized_row.append(value.isoformat())
+            else:
+                serialized_row.append(str(value))
+        rows.append(serialized_row)
+
+    return [columns] + rows
+
+
+def google_json_default(value):
+    if isinstance(value, (datetime, date)):
+        return value.isoformat()
+    item = getattr(value, "item", None)
+    if callable(item):
+        return item()
+    raise TypeError(f"Object of type {type(value).__name__} is not JSON serializable")
+
+
+def sheet_rows_to_df(rows, expected_columns=None):
+    if not rows:
+        return pd.DataFrame(columns=expected_columns)
+
+    columns = [str(column) for column in rows[0]]
+    df = pd.DataFrame(rows[1:], columns=columns)
+    if expected_columns is not None:
+        for column in expected_columns:
+            if column not in df.columns:
+                df[column] = ""
+        return df[expected_columns]
+    return df
+
+
+def post_google_sheet(payload):
+    payload_json = json.dumps(payload, ensure_ascii=False, default=google_json_default)
+    response = requests.post(
+        WEB_APP_URL,
+        data=payload_json,
+        headers={"Content-Type": "application/json"},
+        timeout=(10, 120),
+    )
+    try:
+        response.raise_for_status()
+    except requests.HTTPError as exc:
+        raise RuntimeError(
+            f"Google Apps Script mengembalikan HTTP {response.status_code} "
+            f"(Content-Type: {response.headers.get('Content-Type', 'tidak diketahui')})."
+        ) from exc
+
+    try:
+        result = response.json()
+    except ValueError as exc:
+        raise RuntimeError(
+            "Google Apps Script tidak mengembalikan JSON "
+            f"(HTTP {response.status_code}, "
+            f"Content-Type: {response.headers.get('Content-Type', 'tidak diketahui')}). "
+            "Periksa URL Web App, akses deployment, dan handler doPost."
+        ) from exc
+
+    if not isinstance(result, dict):
+        raise RuntimeError("Format respons Google Apps Script tidak valid.")
+    return result
+
+
+def load_supabase_backup_data():
+    df_rekap = pd.read_csv(DB_FILE) if os.path.exists(DB_FILE) else pd.DataFrame(columns=EXPECTED_COLUMNS)
+    df_sup = pd.read_csv(DB_SUPERVISI_KONTAK_FILE) if os.path.exists(DB_SUPERVISI_KONTAK_FILE) else pd.DataFrame(columns=EXPECTED_SUPERVISI_COLUMNS)
+    df_jdw = pd.read_excel(JADWAL_SPG_FILE) if os.path.exists(JADWAL_SPG_FILE) else pd.DataFrame()
+    df_wrk = pd.read_excel(MASTER_LOKASI_FILE) if os.path.exists(MASTER_LOKASI_FILE) else pd.DataFrame()
+
+    def read_json_file(file_path):
+        if not os.path.exists(file_path):
+            return None
+        with open(file_path, "r", encoding="utf-8") as file:
+            return json.load(file)
+
+    return {
+        "backup_version": 1,
+        "datasets": {
+            "rekap_laporan": df_to_sheet_rows(df_rekap),
+            "rekap_supervisi": df_to_sheet_rows(df_sup),
+            "jadwal_spg": df_to_sheet_rows(df_jdw),
+            "master_warkop": df_to_sheet_rows(df_wrk),
+        },
+        "master_data": {
+            "nama_spg": read_json_file(MASTER_SPG_FILE),
+            "nama_team": read_json_file(MASTER_TEAM_NAME_FILE),
+            "team_brand": read_json_file(MASTER_TEAM_BRAND_FILE),
+            "brand_rokok": read_json_file(MASTER_BRAND_FILE),
+            "target_brand": read_json_file(MASTER_TARGET_FILE),
+            "plat_kendaraan": read_json_file(MASTER_PLAT_FILE),
+            "jadwal_detail": read_json_file(SCHEDULE_DETAIL_FILE),
+        },
+    }
+
+
+def get_supabase_config():
+    try:
+        supabase_url = st.secrets.get("SUPABASE_URL", os.environ.get("SUPABASE_URL"))
+        supabase_key = st.secrets.get("SUPABASE_KEY", os.environ.get("SUPABASE_KEY"))
+    except FileNotFoundError:
+        supabase_url = os.environ.get("SUPABASE_URL")
+        supabase_key = os.environ.get("SUPABASE_KEY")
+
+    if not supabase_url or not supabase_key:
+        raise RuntimeError(
+            "Konfigurasi SUPABASE_URL dan SUPABASE_KEY belum tersedia di Streamlit secrets atau environment."
+        )
+
+    return supabase_url.rstrip("/"), supabase_key
+
+
+def post_supabase_backup(snapshot):
+    supabase_url, supabase_key = get_supabase_config()
+    response = requests.post(
+        f"{supabase_url}/rest/v1/app_backups",
+        json={"data": snapshot},
+        headers={
+            "apikey": supabase_key,
+            "Authorization": f"Bearer {supabase_key}",
+            "Content-Type": "application/json",
+            "Prefer": "return=minimal",
+        },
+        timeout=(10, 120),
+    )
+    try:
+        response.raise_for_status()
+    except requests.HTTPError as exc:
+        raise RuntimeError(
+            f"Supabase mengembalikan HTTP {response.status_code}: {response.text[:500]}"
+        ) from exc
+
+
+def get_latest_supabase_backup():
+    supabase_url, supabase_key = get_supabase_config()
+    response = requests.get(
+        f"{supabase_url}/rest/v1/app_backups",
+        params={
+            "select": "id,created_at,data",
+            "order": "created_at.desc,id.desc",
+            "limit": "1",
+        },
+        headers={
+            "apikey": supabase_key,
+            "Authorization": f"Bearer {supabase_key}",
+        },
+        timeout=(10, 120),
+    )
+    try:
+        response.raise_for_status()
+    except requests.HTTPError as exc:
+        raise RuntimeError(
+            f"Supabase mengembalikan HTTP {response.status_code}: {response.text[:500]}"
+        ) from exc
+
+    try:
+        backups = response.json()
+    except ValueError as exc:
+        raise RuntimeError("Supabase tidak mengembalikan JSON yang valid.") from exc
+
+    if not isinstance(backups, list):
+        raise RuntimeError("Format respons backup Supabase tidak valid.")
+    if not backups:
+        raise RuntimeError("Belum ada backup yang tersimpan di Supabase.")
+    if not isinstance(backups[0], dict) or not isinstance(backups[0].get("data"), dict):
+        raise RuntimeError("Isi backup terbaru di Supabase tidak valid.")
+    return backups[0]
+
+
+def restore_supabase_backup(snapshot):
+    if not isinstance(snapshot, dict) or snapshot.get("backup_version") != 1:
+        raise RuntimeError("Versi atau format backup Supabase tidak didukung.")
+
+    datasets = snapshot.get("datasets")
+    master_data = snapshot.get("master_data")
+    if not isinstance(datasets, dict) or not isinstance(master_data, dict):
+        raise RuntimeError("Struktur data backup Supabase tidak lengkap.")
+
+    dataset_specs = {
+        "rekap_laporan": (DB_FILE, EXPECTED_COLUMNS, "csv"),
+        "rekap_supervisi": (DB_SUPERVISI_KONTAK_FILE, EXPECTED_SUPERVISI_COLUMNS, "csv"),
+        "jadwal_spg": (JADWAL_SPG_FILE, None, "excel"),
+        "master_warkop": (MASTER_LOKASI_FILE, None, "excel"),
+    }
+    file_contents = {}
+    for dataset_name, (file_path, expected_columns, file_type) in dataset_specs.items():
+        rows = datasets.get(dataset_name)
+        if not isinstance(rows, list):
+            raise RuntimeError(f"Data `{dataset_name}` tidak ditemukan pada backup Supabase.")
+        dataframe = sheet_rows_to_df(rows, expected_columns)
+        if file_type == "csv":
+            file_contents[file_path] = dataframe.to_csv(index=False).encode("utf-8")
+        else:
+            excel_buffer = BytesIO()
+            dataframe.to_excel(excel_buffer, index=False)
+            file_contents[file_path] = excel_buffer.getvalue()
+
+    master_file_paths = {
+        "nama_spg": MASTER_SPG_FILE,
+        "nama_team": MASTER_TEAM_NAME_FILE,
+        "team_brand": MASTER_TEAM_BRAND_FILE,
+        "brand_rokok": MASTER_BRAND_FILE,
+        "target_brand": MASTER_TARGET_FILE,
+        "plat_kendaraan": MASTER_PLAT_FILE,
+        "jadwal_detail": SCHEDULE_DETAIL_FILE,
+    }
+    files_to_remove = []
+    for master_name, file_path in master_file_paths.items():
+        if master_name not in master_data:
+            raise RuntimeError(f"Data master `{master_name}` tidak ditemukan pada backup Supabase.")
+        master_value = master_data[master_name]
+        if master_value is None:
+            files_to_remove.append(file_path)
+        else:
+            file_contents[file_path] = json.dumps(
+                master_value, ensure_ascii=False, indent=2
+            ).encode("utf-8")
+
+    staged_files = {}
+    try:
+        for file_path, content in file_contents.items():
+            with tempfile.NamedTemporaryFile(
+                mode="wb",
+                dir=os.path.dirname(os.path.abspath(file_path)),
+                prefix=f".{os.path.basename(file_path)}.",
+                suffix=".tmp",
+                delete=False,
+            ) as staged_file:
+                staged_file.write(content)
+                staged_files[file_path] = staged_file.name
+
+        for file_path, staged_path in staged_files.items():
+            os.replace(staged_path, file_path)
+        for file_path in files_to_remove:
+            if os.path.exists(file_path):
+                os.remove(file_path)
+    finally:
+        for staged_path in staged_files.values():
+            if os.path.exists(staged_path):
+                os.remove(staged_path)
+
+
+def auto_backup_to_supabase():
+    try:
+        snapshot = load_supabase_backup_data()
+        post_supabase_backup(snapshot)
+    except Exception as e:
+        st.warning(f"Data tersimpan lokal, namun gagal sinkron otomatis ke Supabase: {e}")
+
+
+# ====================================================
+# AUTO-RESTORE SAAT APLIKASI PERTAMA KALI DIBUKA
+# ====================================================
+if "initial_sync_done" not in st.session_state:
+    try:
+        backup = get_latest_supabase_backup()
+        restore_supabase_backup(backup["data"])
+        st.cache_data.clear()
+    except Exception:
+        # Jika belum ada backup di Supabase atau koneksi awal gagal, gunakan file lokal
+        pass
+    finally:
+        st.session_state["initial_sync_done"] = True
+
 
 # ====================================================
 # CUSTOM CSS UNTUK UI MODERN
@@ -165,300 +493,6 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# ====================================================
-# DEFINISI FILE DATABASE LOKAL & KONFIGURASI GOOGLE SHEET
-# ====================================================
-WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzk6tqiNonaArNjJt7X0IIhja_D7elgGLkNPE90xmDtvdHwNeq4VhZJQfUU2OE_jiA/exec"
-
-DB_FILE = "rekap_laporan_spg.csv"
-DB_SUPERVISI_KONTAK_FILE = "rekap_kontak_supervisi.csv"
-MASTER_BRAND_FILE = "master_brand_rokok.json"
-MASTER_TARGET_FILE = "master_target_brand.json"
-MASTER_LOKASI_FILE = "Master WarkopLKK.xlsx"
-MASTER_SPG_FILE = "master_nama_spg.json"
-MASTER_TEAM_BRAND_FILE = "master_team_brand.json"
-MASTER_PLAT_FILE = "master_plat_kendaraan.json"
-MASTER_TEAM_NAME_FILE = "master_nama_team.json"
-JADWAL_SPG_FILE = "Jadwal SPG.xlsx"
-
-EXPECTED_COLUMNS = [
-    "Waktu",
-    "Promotor",
-    "Plat_Mobil",
-    "Nama_SPG",
-    "Kota_Kab",
-    "Kecamatan",
-    "Warkop_LKK",
-    "Alamat_Warkop",
-    "Brand_Rokok",
-    "Nama_Konsumen",
-    "Gender",
-    "Range_Umur",
-    "No_HP",
-    "Instagram",
-    "Jumlah_Bungkus",
-    "Rokok_Asal_BUMO",
-    "Latitude",
-    "Longitude",
-]
-
-EXPECTED_SUPERVISI_COLUMNS = [
-    "Waktu",
-    "Promotor",
-    "Plat_Mobil",
-    "Kota_Kab",
-    "Kecamatan",
-    "Warkop_LKK",
-    "Alamat_Warkop",
-    "Jumlah_Kontak_Manual",
-]
-
-def df_to_sheet_rows(df: pd.DataFrame):
-    if df is None:
-        return []
-    columns = [str(column) for column in df.columns]
-    if df.empty:
-        return [columns] if columns else []
-
-    rows = []
-    for row in df.itertuples(index=False, name=None):
-        serialized_row = []
-        for value in row:
-            if pd.isna(value):
-                serialized_row.append("")
-            elif isinstance(value, (datetime, pd.Timestamp)):
-                serialized_row.append(value.strftime("%Y-%m-%d %H:%M:%S"))
-            elif isinstance(value, date):
-                serialized_row.append(value.isoformat())
-            else:
-                serialized_row.append(str(value))
-        rows.append(serialized_row)
-
-    return [columns] + rows
-
-def google_json_default(value):
-    if isinstance(value, (datetime, date)):
-        return value.isoformat()
-    item = getattr(value, "item", None)
-    if callable(item):
-        return item()
-    raise TypeError(f"Object of type {type(value).__name__} is not JSON serializable")
-
-def sheet_rows_to_df(rows, expected_columns=None):
-    if not rows:
-        return pd.DataFrame(columns=expected_columns)
-
-    columns = [str(column) for column in rows[0]]
-    df = pd.DataFrame(rows[1:], columns=columns)
-    if expected_columns is not None:
-        for column in expected_columns:
-            if column not in df.columns:
-                df[column] = ""
-        return df[expected_columns]
-    return df
-
-def post_google_sheet(payload):
-    payload_json = json.dumps(payload, ensure_ascii=False, default=google_json_default)
-    response = requests.post(
-        WEB_APP_URL,
-        data=payload_json,
-        headers={"Content-Type": "application/json"},
-        timeout=(10, 120),
-    )
-    try:
-        response.raise_for_status()
-    except requests.HTTPError as exc:
-        raise RuntimeError(
-            f"Google Apps Script mengembalikan HTTP {response.status_code} "
-            f"(Content-Type: {response.headers.get('Content-Type', 'tidak diketahui')})."
-        ) from exc
-
-    try:
-        result = response.json()
-    except ValueError as exc:
-        raise RuntimeError(
-            "Google Apps Script tidak mengembalikan JSON "
-            f"(HTTP {response.status_code}, "
-            f"Content-Type: {response.headers.get('Content-Type', 'tidak diketahui')}). "
-            "Periksa URL Web App, akses deployment, dan handler doPost."
-        ) from exc
-
-    if not isinstance(result, dict):
-        raise RuntimeError("Format respons Google Apps Script tidak valid.")
-    return result
-
-def load_supabase_backup_data():
-    df_rekap = pd.read_csv(DB_FILE) if os.path.exists(DB_FILE) else pd.DataFrame(columns=EXPECTED_COLUMNS)
-    df_sup = pd.read_csv(DB_SUPERVISI_KONTAK_FILE) if os.path.exists(DB_SUPERVISI_KONTAK_FILE) else pd.DataFrame(columns=EXPECTED_SUPERVISI_COLUMNS)
-    df_jdw = pd.read_excel(JADWAL_SPG_FILE) if os.path.exists(JADWAL_SPG_FILE) else pd.DataFrame()
-    df_wrk = pd.read_excel(MASTER_LOKASI_FILE) if os.path.exists(MASTER_LOKASI_FILE) else pd.DataFrame()
-
-    def read_json_file(file_path):
-        if not os.path.exists(file_path):
-            return None
-        with open(file_path, "r", encoding="utf-8") as file:
-            return json.load(file)
-
-    return {
-        "backup_version": 1,
-        "datasets": {
-            "rekap_laporan": df_to_sheet_rows(df_rekap),
-            "rekap_supervisi": df_to_sheet_rows(df_sup),
-            "jadwal_spg": df_to_sheet_rows(df_jdw),
-            "master_warkop": df_to_sheet_rows(df_wrk),
-        },
-        "master_data": {
-            "nama_spg": read_json_file(MASTER_SPG_FILE),
-            "nama_team": read_json_file(MASTER_TEAM_NAME_FILE),
-            "team_brand": read_json_file(MASTER_TEAM_BRAND_FILE),
-            "brand_rokok": read_json_file(MASTER_BRAND_FILE),
-            "target_brand": read_json_file(MASTER_TARGET_FILE),
-            "plat_kendaraan": read_json_file(MASTER_PLAT_FILE),
-            "jadwal_detail": read_json_file(SCHEDULE_DETAIL_FILE),
-        },
-    }
-
-def get_supabase_config():
-    try:
-        supabase_url = st.secrets.get("SUPABASE_URL", os.environ.get("SUPABASE_URL"))
-        supabase_key = st.secrets.get("SUPABASE_KEY", os.environ.get("SUPABASE_KEY"))
-    except FileNotFoundError:
-        supabase_url = os.environ.get("SUPABASE_URL")
-        supabase_key = os.environ.get("SUPABASE_KEY")
-
-    if not supabase_url or not supabase_key:
-        raise RuntimeError(
-            "Konfigurasi SUPABASE_URL dan SUPABASE_KEY belum tersedia di Streamlit secrets atau environment."
-        )
-
-    return supabase_url.rstrip("/"), supabase_key
-
-def post_supabase_backup(snapshot):
-    supabase_url, supabase_key = get_supabase_config()
-    response = requests.post(
-        f"{supabase_url}/rest/v1/app_backups",
-        json={"data": snapshot},
-        headers={
-            "apikey": supabase_key,
-            "Authorization": f"Bearer {supabase_key}",
-            "Content-Type": "application/json",
-            "Prefer": "return=minimal",
-        },
-        timeout=(10, 120),
-    )
-    try:
-        response.raise_for_status()
-    except requests.HTTPError as exc:
-        raise RuntimeError(
-            f"Supabase mengembalikan HTTP {response.status_code}: {response.text[:500]}"
-        ) from exc
-
-def get_latest_supabase_backup():
-    supabase_url, supabase_key = get_supabase_config()
-    response = requests.get(
-        f"{supabase_url}/rest/v1/app_backups",
-        params={
-            "select": "id,created_at,data",
-            "order": "created_at.desc,id.desc",
-            "limit": "1",
-        },
-        headers={
-            "apikey": supabase_key,
-            "Authorization": f"Bearer {supabase_key}",
-        },
-        timeout=(10, 120),
-    )
-    try:
-        response.raise_for_status()
-    except requests.HTTPError as exc:
-        raise RuntimeError(
-            f"Supabase mengembalikan HTTP {response.status_code}: {response.text[:500]}"
-        ) from exc
-
-    try:
-        backups = response.json()
-    except ValueError as exc:
-        raise RuntimeError("Supabase tidak mengembalikan JSON yang valid.") from exc
-
-    if not isinstance(backups, list):
-        raise RuntimeError("Format respons backup Supabase tidak valid.")
-    if not backups:
-        raise RuntimeError("Belum ada backup yang tersimpan di Supabase.")
-    if not isinstance(backups[0], dict) or not isinstance(backups[0].get("data"), dict):
-        raise RuntimeError("Isi backup terbaru di Supabase tidak valid.")
-    return backups[0]
-
-def restore_supabase_backup(snapshot):
-    if not isinstance(snapshot, dict) or snapshot.get("backup_version") != 1:
-        raise RuntimeError("Versi atau format backup Supabase tidak didukung.")
-
-    datasets = snapshot.get("datasets")
-    master_data = snapshot.get("master_data")
-    if not isinstance(datasets, dict) or not isinstance(master_data, dict):
-        raise RuntimeError("Struktur data backup Supabase tidak lengkap.")
-
-    dataset_specs = {
-        "rekap_laporan": (DB_FILE, EXPECTED_COLUMNS, "csv"),
-        "rekap_supervisi": (DB_SUPERVISI_KONTAK_FILE, EXPECTED_SUPERVISI_COLUMNS, "csv"),
-        "jadwal_spg": (JADWAL_SPG_FILE, None, "excel"),
-        "master_warkop": (MASTER_LOKASI_FILE, None, "excel"),
-    }
-    file_contents = {}
-    for dataset_name, (file_path, expected_columns, file_type) in dataset_specs.items():
-        rows = datasets.get(dataset_name)
-        if not isinstance(rows, list):
-            raise RuntimeError(f"Data `{dataset_name}` tidak ditemukan pada backup Supabase.")
-        dataframe = sheet_rows_to_df(rows, expected_columns)
-        if file_type == "csv":
-            file_contents[file_path] = dataframe.to_csv(index=False).encode("utf-8")
-        else:
-            excel_buffer = BytesIO()
-            dataframe.to_excel(excel_buffer, index=False)
-            file_contents[file_path] = excel_buffer.getvalue()
-
-    master_file_paths = {
-        "nama_spg": MASTER_SPG_FILE,
-        "nama_team": MASTER_TEAM_NAME_FILE,
-        "team_brand": MASTER_TEAM_BRAND_FILE,
-        "brand_rokok": MASTER_BRAND_FILE,
-        "target_brand": MASTER_TARGET_FILE,
-        "plat_kendaraan": MASTER_PLAT_FILE,
-        "jadwal_detail": SCHEDULE_DETAIL_FILE,
-    }
-    files_to_remove = []
-    for master_name, file_path in master_file_paths.items():
-        if master_name not in master_data:
-            raise RuntimeError(f"Data master `{master_name}` tidak ditemukan pada backup Supabase.")
-        master_value = master_data[master_name]
-        if master_value is None:
-            files_to_remove.append(file_path)
-        else:
-            file_contents[file_path] = json.dumps(
-                master_value, ensure_ascii=False, indent=2
-            ).encode("utf-8")
-
-    staged_files = {}
-    try:
-        for file_path, content in file_contents.items():
-            with tempfile.NamedTemporaryFile(
-                mode="wb",
-                dir=os.path.dirname(os.path.abspath(file_path)),
-                prefix=f".{os.path.basename(file_path)}.",
-                suffix=".tmp",
-                delete=False,
-            ) as staged_file:
-                staged_file.write(content)
-                staged_files[file_path] = staged_file.name
-
-        for file_path, staged_path in staged_files.items():
-            os.replace(staged_path, file_path)
-        for file_path in files_to_remove:
-            if os.path.exists(file_path):
-                os.remove(file_path)
-    finally:
-        for staged_path in staged_files.values():
-            if os.path.exists(staged_path):
-                os.remove(staged_path)
 
 def render_google_sheet_backup_controls():
     with st.expander("☁️ Backup & Load Data", expanded=False):
@@ -498,6 +532,7 @@ def render_google_sheet_backup_controls():
                     df_sup = pd.read_csv(DB_SUPERVISI_KONTAK_FILE) if os.path.exists(DB_SUPERVISI_KONTAK_FILE) else pd.DataFrame(columns=EXPECTED_SUPERVISI_COLUMNS)
                     df_jdw = pd.read_excel(JADWAL_SPG_FILE) if os.path.exists(JADWAL_SPG_FILE) else pd.DataFrame()
                     df_wrk = pd.read_excel(MASTER_LOKASI_FILE) if os.path.exists(MASTER_LOKASI_FILE) else pd.DataFrame()
+                    df_spg_master = pd.DataFrame({"Nama_SPG": load_master_spgs()})
 
                     payload = {
                         "action": "backup",
@@ -505,6 +540,7 @@ def render_google_sheet_backup_controls():
                         "rekap_supervisi": df_to_sheet_rows(df_sup),
                         "jadwal_spg": df_to_sheet_rows(df_jdw),
                         "master_warkop": df_to_sheet_rows(df_wrk),
+                        "master_spg": df_to_sheet_rows(df_spg_master),
                     }
 
                     res_json = post_google_sheet(payload)
@@ -554,6 +590,7 @@ def render_google_sheet_backup_controls():
                         if "master_warkop" in data_gs and len(data_gs["master_warkop"]) > 0:
                             sheet_rows_to_df(data_gs["master_warkop"]).to_excel(MASTER_LOKASI_FILE, index=False)
 
+                        auto_backup_to_supabase()
                         st.cache_data.clear()
                         st.success("✅ Data berhasil dimuat dari Google Sheet!")
                         st.rerun()
@@ -562,6 +599,7 @@ def render_google_sheet_backup_controls():
             except Exception as e:
                 st.error(f"Error load: {e}")
 
+
 # ====================================================
 # FUNGSI BANTUAN UMUM
 # ====================================================
@@ -569,6 +607,7 @@ def normalize_text(value):
     if pd.isna(value):
         return ""
     return str(value).strip()
+
 
 def get_custom_week_info(dt):
     if pd.isna(dt):
@@ -587,6 +626,7 @@ def get_custom_week_info(dt):
     periode_label = f"Minggu ke-{iso_w}"
     return periode_label, iso_w
 
+
 def add_custom_week_columns(df, date_col="Waktu_Dt"):
     if df.empty or date_col not in df.columns:
         df["Periode_Minggu"] = "-"
@@ -597,6 +637,7 @@ def add_custom_week_columns(df, date_col="Waktu_Dt"):
         periods.append(p_label)
     df["Periode_Minggu"] = periods
     return df
+
 
 # ====================================================
 # DATABASE TRANSAKSI & SUPERVISI
@@ -615,8 +656,11 @@ def load_database():
             return pd.DataFrame(columns=EXPECTED_COLUMNS)
     return pd.DataFrame(columns=EXPECTED_COLUMNS)
 
+
 def save_database(df):
     df.to_csv(DB_FILE, index=False)
+    auto_backup_to_supabase()
+
 
 def load_supervisi_database():
     if os.path.exists(DB_SUPERVISI_KONTAK_FILE):
@@ -630,8 +674,11 @@ def load_supervisi_database():
             return pd.DataFrame(columns=EXPECTED_SUPERVISI_COLUMNS)
     return pd.DataFrame(columns=EXPECTED_SUPERVISI_COLUMNS)
 
+
 def save_supervisi_database(df):
     df.to_csv(DB_SUPERVISI_KONTAK_FILE, index=False)
+    auto_backup_to_supabase()
+
 
 # ====================================================
 # MASTER WILAYAH / GEOJSON
@@ -656,6 +703,7 @@ def load_master_wilayah(kota):
         st.error(f"Gagal memuat file master wilayah '{filename}': {e}")
         return None
 
+
 # ====================================================
 # MASTER BRAND / TARGET / TEAM / PLAT / NAMA TEAM
 # ====================================================
@@ -671,6 +719,7 @@ DEFAULT_BRANDS = [
 ]
 DEFAULT_SPGS = ["Nanda"]
 DEFAULT_PLATS = ["L 1234 ABC"]
+
 
 def load_master_team_names():
     default_teams = {f"Team SPG {i}": f"Team SPG {i}" for i in range(1, 21)}
@@ -693,6 +742,7 @@ def load_master_team_names():
         save_master_team_names(default_teams)
         return default_teams
 
+
 def save_master_team_names(team_names_dict):
     active_names = [str(name).strip() for name in team_names_dict.values() if str(name).strip()]
     if not active_names:
@@ -712,10 +762,12 @@ def save_master_team_names(team_names_dict):
                 ensure_ascii=False,
                 indent=2,
             )
+        auto_backup_to_supabase()
         return True
     except Exception as e:
         st.error(f"Gagal menyimpan master nama team: {e}")
         return False
+
 
 def load_master_brands():
     if os.path.exists(MASTER_BRAND_FILE):
@@ -726,14 +778,17 @@ def load_master_brands():
             return DEFAULT_BRANDS
     return DEFAULT_BRANDS
 
+
 def save_master_brands(brands):
     try:
         with open(MASTER_BRAND_FILE, "w", encoding="utf-8") as f:
             json.dump(brands, f, ensure_ascii=False, indent=2)
+        auto_backup_to_supabase()
         return True
     except Exception as e:
         st.error(f"Gagal menyimpan file master_brand_rokok.json: {e}")
         return False
+
 
 def load_master_team_brands():
     current_brands = load_master_brands()
@@ -755,6 +810,7 @@ def load_master_team_brands():
         save_master_team_brands(default_teams)
         return default_teams
 
+
 def save_master_team_brands(team_brands):
     try:
         cleaned_data = {
@@ -763,10 +819,12 @@ def save_master_team_brands(team_brands):
         }
         with open(MASTER_TEAM_BRAND_FILE, "w", encoding="utf-8") as f:
             json.dump(cleaned_data, f, ensure_ascii=False, indent=2)
+        auto_backup_to_supabase()
         return True
     except Exception as e:
         st.error(f"❌ Gagal menyimpan ke `{MASTER_TEAM_BRAND_FILE}`: {e}")
         return False
+
 
 def load_master_plat_kendaraan():
     if os.path.exists(MASTER_PLAT_FILE):
@@ -781,9 +839,12 @@ def load_master_plat_kendaraan():
             return DEFAULT_PLATS
     return DEFAULT_PLATS
 
+
 def save_master_plat_kendaraan(plat_list):
     with open(MASTER_PLAT_FILE, "w", encoding="utf-8") as f:
         json.dump(plat_list, f, ensure_ascii=False, indent=2)
+    auto_backup_to_supabase()
+
 
 def load_master_lokasi_excel():
     if os.path.exists(MASTER_LOKASI_FILE):
@@ -803,13 +864,16 @@ def load_master_lokasi_excel():
             ],
         )
 
+
 def save_master_lokasi_excel(df_excel):
     try:
         df_excel.to_excel(MASTER_LOKASI_FILE, index=False)
+        auto_backup_to_supabase()
         return True
     except Exception as e:
         st.error(f"Gagal menyimpan file Excel: {e}")
         return False
+
 
 def load_master_spgs():
     if os.path.exists(MASTER_SPG_FILE):
@@ -820,9 +884,12 @@ def load_master_spgs():
             return DEFAULT_SPGS
     return DEFAULT_SPGS
 
+
 def save_master_spgs(spgs):
     with open(MASTER_SPG_FILE, "w", encoding="utf-8") as f:
         json.dump(spgs, f, ensure_ascii=False, indent=2)
+    auto_backup_to_supabase()
+
 
 # ====================================================
 # JADWAL SPG
@@ -838,25 +905,26 @@ def load_jadwal_spg():
             return pd.DataFrame()
     return pd.DataFrame()
 
+
 def save_jadwal_spg(df):
     try:
         df.to_excel(JADWAL_SPG_FILE, index=False)
+        auto_backup_to_supabase()
         return True
     except Exception as e:
         st.error(f"Gagal menyimpan file Jadwal SPG {JADWAL_SPG_FILE}: {e}")
         return False
+
 
 def _is_same_team_reference(team_cell, team_name):
     team_cell = normalize_text(team_cell).lower()
     team_name = normalize_text(team_name).lower()
     if not team_cell or team_cell == "nan" or team_cell == "none":
         return False
-
-    # Pencocokan persis secara utuh (Exact match) agar tidak tercampur
     if team_cell == team_name:
         return True
-
     return False
+
 
 def get_schedule_info_for_team(team_name):
     df_j = load_jadwal_spg()
@@ -903,6 +971,7 @@ def get_schedule_info_for_team(team_name):
 
     return True, "", found_kota, kec_list, pd.DataFrame(matched_rows)
 
+
 # ====================================================
 # TARGET BRAND PER SPG / TEAM
 # ====================================================
@@ -928,6 +997,7 @@ TARGET_GROUP_OPTIONS = {
     "Black_Matcha": TARGET_GROUP_LABELS["Black_Matcha"],
 }
 
+
 def load_target_rules():
     if os.path.exists(MASTER_TARGET_FILE):
         try:
@@ -937,14 +1007,19 @@ def load_target_rules():
             return DEFAULT_TARGET_RULES
     return DEFAULT_TARGET_RULES
 
+
 def save_target_rules(rules):
     with open(MASTER_TARGET_FILE, "w", encoding="utf-8") as f:
         json.dump(rules, f, ensure_ascii=False, indent=2)
+    auto_backup_to_supabase()
+
 
 TARGET_RULES = load_target_rules()
 
+
 def normalize_brand_key(brand):
     return "".join(str(brand).casefold().split())
+
 
 def get_brand_target_rule(brand):
     brand_key = normalize_brand_key(brand)
@@ -953,15 +1028,18 @@ def get_brand_target_rule(brand):
         {},
     )
 
+
 def clean_brand_target_name(brand):
     group = get_brand_target_rule(brand).get("group")
     return TARGET_GROUP_LABELS.get(group, brand)
+
 
 def get_group_target(group_name, target_key, default_val):
     for brand, rule in TARGET_RULES.items():
         if rule.get("group") == group_name and target_key in rule:
             return rule[target_key]
     return default_val
+
 
 def get_target_for_brand(brand, target_key, default_val):
     rule = get_brand_target_rule(brand)
@@ -970,12 +1048,14 @@ def get_target_for_brand(brand, target_key, default_val):
         return get_group_target(group, target_key, default_val)
     return rule.get(target_key, default_val)
 
+
 def style_status_target(val):
     if val == "Not Achieved":
         return "color: #d32f2f; font-weight: bold;"
     elif val == "Achieved":
         return "color: #16a34a; font-weight: bold;"
     return ""
+
 
 # ====================================================
 # SESSION STATE
@@ -988,6 +1068,7 @@ def reset_session_on_user_change():
     st.session_state["draft_ig"] = ""
     st.session_state["draft_bungkus"] = 1
     st.session_state["draft_bumo"] = ""
+
 
 if "logged_in" not in st.session_state:
     st.session_state["logged_in"] = False
@@ -1013,6 +1094,7 @@ if "draft_bungkus" not in st.session_state:
     st.session_state["draft_bungkus"] = 1
 if "draft_bumo" not in st.session_state:
     st.session_state["draft_bumo"] = ""
+
 
 # ====================================================
 # SIDEBAR ADMIN
@@ -1075,6 +1157,7 @@ if not st.session_state["logged_in"]:
                 st.session_state["admin_logged_in"] = False
                 st.rerun()
 
+
 # ====================================================
 # HALAMAN ADMIN
 # ====================================================
@@ -1090,7 +1173,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
         with st.form("form_edit_nama_team"):
             st.markdown("#### Edit Nama Team")
             updated_names = {}
-            
+
             for i in range(1, 21):
                 key = f"Team SPG {i}"
                 current_val = team_names_map.get(key, key)
@@ -1286,7 +1369,6 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
                 if b_clean:
                     if b_clean not in current_brands:
                         current_brands.append(b_clean)
-                        save_master_brands(current_brands)
                         target_rules_data[b_clean] = {
                             "target_spg": int(t_spg),
                             "target_team": int(t_team),
@@ -1294,6 +1376,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
                         if new_group:
                             target_rules_data[b_clean]["group"] = new_group
                         save_target_rules(target_rules_data)
+                        save_master_brands(current_brands)
                         st.success(f"✅ Merek rokok '{b_clean}' berhasil ditambahkan!")
                         st.rerun()
                     else:
@@ -1343,10 +1426,10 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
 
                     if btn_del_brand:
                         current_brands.remove(b)
-                        save_master_brands(current_brands)
                         if b in target_rules_data:
                             del target_rules_data[b]
-                            save_target_rules(target_rules_data)
+                        save_target_rules(target_rules_data)
+                        save_master_brands(current_brands)
                         st.success(f"🗑️ Brand '{b}' berhasil dihapus!")
                         st.rerun()
 
@@ -1412,6 +1495,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
     elif st.session_state["admin_view"] == "Master_Jadwal_Excel":
         st.markdown("## 📅 Entry & Monitoring Jadwal SPG (Kecamatan, Team & Tanggal)")
         render_schedule_entry()
+        auto_backup_to_supabase()
         st.stop()
 
     # --- ANALITIK ---
@@ -1828,7 +1912,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
             df_team_leaderboard["Target_Team"] = df_team_leaderboard["Brand_Rokok"].apply(get_team_target)
             df_team_leaderboard["Status_Target_Team"] = df_team_leaderboard.apply(
                 lambda r: "Achieved" if r["Total_Omset_Team"] >= r["Target_Team"] else "Not Achieved",
-                axis=1
+                axis=1,
             )
 
             cols_lb_order = ["Tanggal", "Periode_Minggu", "Promotor", "Kota_Kab", "Brand_Rokok", "Total_Omset_Team", "Total_Konsumen_Beli", "Target_Team", "Status_Target_Team"]
@@ -2148,6 +2232,7 @@ if not st.session_state["logged_in"] and st.session_state["admin_logged_in"]:
 
     st.stop()
 
+
 # ====================================================
 # HALAMAN LOGIN UTAMA
 # ====================================================
@@ -2256,6 +2341,7 @@ if not st.session_state["logged_in"]:
 
     st.stop()
 
+
 # ====================================================
 # APLIKASI UTAMA SETELAH LOGIN
 # ====================================================
@@ -2327,7 +2413,6 @@ else:
 is_inside_geofence = True
 
 if is_inside_geofence:
-    info_kec_gps = f"Kecamatan **{detected_kecamatan}**" if detected_kecamatan else "Wilayah Terdeteksi"
     st.success(
         f"📍 **Status GPS (Aktif):** Lat: `{user_lat:.6f}`, Lon: `{user_lon:.6f}` "
         f"(Akurasi: ±{akurasi_meter}m) — **{st.session_state['kota_kab']}**"
@@ -2683,7 +2768,7 @@ if not df_user_rekap.empty:
     df_eval_spg["Target_SPG"] = df_eval_spg["Brand_Rokok"].apply(get_spg_target)
     df_eval_spg["Status_Target_SPG"] = df_eval_spg.apply(
         lambda r: "Achieved" if r["Jumlah_Omset_SPG"] >= r["Target_SPG"] else "Not Achieved",
-        axis=1
+        axis=1,
     )
 
     cols_eval_order = ["Tanggal", "Periode_Minggu", "Nama_SPG", "Brand_Rokok", "Jumlah_Titik_Warkop", "Konsumen_Beli", "Jumlah_Omset_SPG", "Target_SPG", "Status_Target_SPG"]
